@@ -1,6 +1,7 @@
 import os
 import re
 import time
+from datetime import datetime
 from curl_cffi import requests as curl_requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -37,26 +38,73 @@ class RezkaClient:
         # Ищем иконку с классом watched
         icon = element.find("i", class_="watched")
         if icon:
-            print(f"  ✓ Найдена иконка watched: {icon.get('class')}")
             return True
         
-        # Ищем элемент с data-text-unwatch (это значит серия просмотрена)
+        # Ищем элемент с data-text-unwatch
         action = element.find(class_="watch-episode-action")
         if action:
             classes = action.get("class", [])
             title = action.get("title", "")
-            data_unwatch = action.get("data-text-unwatch", "")
-            
-            print(f"  📌 Action найден: classes={classes}, title={title}, data-unwatch={data_unwatch}")
             
             if "watched" in classes:
                 return True
             if "Удалить" in title:
                 return True
-            if data_unwatch:
-                return True
         
         return False
+
+    def _is_episode_released(self, tr_element):
+        """Проверка, вышла ли серия (доступна для просмотра)"""
+        if not tr_element:
+            return False
+        
+        # Проверка 1: Есть ли дата в будущем?
+        td_date = tr_element.find(class_="td-2")
+        if td_date:
+            date_text = td_date.text.strip()
+            # Ищем паттерн даты: "26 января" или "26.01"
+            
+            # Пытаемся распарсить дату
+            try:
+                # Месяцы на русском
+                months_ru = {
+                    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
+                    'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
+                    'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
+                }
+                
+                # Паттерн: "26 января"
+                for month_name, month_num in months_ru.items():
+                    if month_name in date_text.lower():
+                        day_match = re.search(r'(\d+)', date_text)
+                        if day_match:
+                            day = int(day_match.group(1))
+                            # Предполагаем текущий или следующий год
+                            year = datetime.now().year
+                            ep_date = datetime(year, month_num, day)
+                            
+                            # Если дата в будущем - серия не вышла
+                            if ep_date > datetime.now():
+                                print(f"    📅 Дата в будущем: {date_text}")
+                                return False
+            except:
+                pass
+        
+        # Проверка 2: Есть ли ссылка на плеер?
+        # Если серия вышла, должна быть возможность её посмотреть
+        play_link = tr_element.find("a", href=True)
+        if not play_link:
+            # Нет ссылки = серия не вышла
+            print(f"    🔗 Нет ссылки для просмотра")
+            return False
+        
+        # Проверка 3: Класс "not-released" или подобное
+        classes = tr_element.get("class", [])
+        if "not-released" in classes or "soon" in classes:
+            print(f"    🚫 Класс 'не вышла': {classes}")
+            return False
+        
+        return True
 
     def _parse_schedule_table(self, soup):
         """Парсинг таблицы расписания"""
@@ -98,9 +146,14 @@ class RezkaClient:
             
             print(f"  🔍 Серия {s_id}x{e_id}: text='{text[:30]}...', id={global_id}")
             
-            # Если нет ID - пропускаем (серия не вышла)
+            # ФИЛЬТР 1: Нет ID
             if not global_id:
                 print(f"    ⏭️ Пропущена (нет ID)")
+                continue
+            
+            # ФИЛЬТР 2: Серия ещё не вышла
+            if not self._is_episode_released(tr):
+                print(f"    ⏭️ Пропущена (не вышла)")
                 continue
             
             # Проверка просмотра
