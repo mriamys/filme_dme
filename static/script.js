@@ -12,7 +12,7 @@ async function switchTab(cat, btn) {
     loadGrid(cat);
 }
 
-// Загрузка сетки фильмов
+// Загрузка сетки
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
@@ -30,6 +30,7 @@ async function loadGrid(cat) {
         data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'card';
+            // Передаем URL для открытия деталей
             div.onclick = () => openDetails(item.url, item.title, item.poster);
             div.innerHTML = `
                 <div class="card-badge">${item.status || 'Фильм'}</div>
@@ -46,13 +47,16 @@ async function loadGrid(cat) {
     }
 }
 
-// Открытие деталей
+// --- ДЕТАЛИ ---
+let currentPostId = null; // Храним ID текущего открытого фильма
+
 async function openDetails(url, title, poster) {
     const modal = document.getElementById('details');
     modal.classList.add('open');
     
     document.getElementById('det-img').src = poster;
     document.getElementById('det-title').innerText = title;
+    document.getElementById('det-controls').style.display = 'none'; // Скрываем кнопки пока грузится
     
     const list = document.getElementById('det-list');
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка серий...</div>';
@@ -61,37 +65,43 @@ async function openDetails(url, title, poster) {
         const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
         const data = await res.json();
 
-        // Если пришел HD постер - обновляем
+        // Сохраняем ID для кнопок управления
+        if(data.post_id) {
+            currentPostId = data.post_id;
+            document.getElementById('det-controls').style.display = 'flex';
+        }
+
         if(data.poster) document.getElementById('det-img').src = data.poster;
 
         list.innerHTML = '';
         if(data.error) {
+            // Если ошибка "Серии не найдены", это может быть фильм, но кнопки управления покажем
             list.innerHTML = `<div style="text-align:center; padding:20px;">${data.error}</div>`;
-            return;
         }
 
-        // Рендерим сезоны
-        Object.keys(data.seasons).forEach(s => {
-            const h = document.createElement('div');
-            h.className = 'season-title';
-            h.innerText = s + ' сезон';
-            list.appendChild(h);
+        // Рендер серий
+        if(data.seasons) {
+            Object.keys(data.seasons).forEach(s => {
+                const h = document.createElement('div');
+                h.className = 'season-title';
+                h.innerText = s + ' сезон';
+                list.appendChild(h);
 
-            data.seasons[s].forEach(ep => {
-                const row = document.createElement('div');
-                row.className = `ep-row ${ep.watched ? 'watched' : ''}`;
-                row.innerHTML = `
-                    <span style="flex:1; padding-right:10px;">${ep.title}</span>
-                    <div class="check ${ep.watched ? 'active' : ''}" 
-                         onclick="toggle('${ep.global_id}', this)"></div>
-                `;
-                // Храним ссылку на строку в DOM элементе галочки для удобства
-                row.querySelector('.check').rowElement = row; 
-                list.appendChild(row);
+                data.seasons[s].forEach(ep => {
+                    const row = document.createElement('div');
+                    row.className = `ep-row ${ep.watched ? 'watched' : ''}`;
+                    row.innerHTML = `
+                        <span style="flex:1; padding-right:10px;">${ep.title}</span>
+                        <div class="check ${ep.watched ? 'active' : ''}" 
+                             onclick="toggle('${ep.global_id}', this)"></div>
+                    `;
+                    row.querySelector('.check').rowElement = row; 
+                    list.appendChild(row);
+                });
             });
-        });
+        }
     } catch(e) {
-        list.innerHTML = '<div style="text-align:center; padding:20px;">Ошибка загрузки серий</div>';
+        list.innerHTML = '<div style="text-align:center; padding:20px;">Ошибка загрузки</div>';
     }
 }
 
@@ -99,14 +109,30 @@ function closeDetails() {
     document.getElementById('details').classList.remove('open');
 }
 
+// --- ДЕЙСТВИЯ (Перенос в категории) ---
+async function moveMovie(category) {
+    if(!currentPostId) return;
+    tg.HapticFeedback.notificationOccurred('success');
+    
+    // category: 'watching', 'later', 'watched'
+    await fetch('/api/add', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({post_id: currentPostId, category: category})
+    });
+    
+    alert('Перенесено!');
+    closeDetails();
+    // Обновляем текущую сетку
+    const activeBtn = document.querySelector('.tab-btn.active');
+    if(activeBtn) activeBtn.click(); 
+}
+
 // Ставим галочку
 async function toggle(gid, btn) {
     tg.HapticFeedback.impactOccurred('medium');
-    
     const row = btn.rowElement;
     const isActive = btn.classList.contains('active');
     
-    // Оптимистичный UI: меняем сразу, не ждем сервера
     if(isActive) {
         btn.classList.remove('active');
         row.classList.remove('watched');
@@ -115,7 +141,6 @@ async function toggle(gid, btn) {
         row.classList.add('watched');
     }
 
-    // Шлем на сервер
     await fetch('/api/toggle', {
         method: 'POST', 
         headers: {'Content-Type': 'application/json'},
@@ -123,7 +148,7 @@ async function toggle(gid, btn) {
     });
 }
 
-// Поиск
+// --- ПОИСК ---
 function openSearch(btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -143,18 +168,19 @@ function doSearch(val) {
         list.innerHTML = '';
         
         data.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'search-item';
-            row.innerHTML = `
-                <div style="flex:1; font-weight:500">${item.title}</div>
-                <div>
-                    <button class="btn-add" onclick="addFav('${item.id}', 'watching')">+ Смотрю</button>
-                    <button class="btn-add" style="margin-left:5px; background:#444" onclick="addFav('${item.id}', 'later')">+ Позже</button>
+            const div = document.createElement('div');
+            div.className = 'search-item';
+            div.innerHTML = `
+                <div class="search-title">${item.title}</div>
+                <div class="search-actions">
+                    <button class="btn-action btn-watch" onclick="addFav('${item.id}', 'watching')">+ Смотрю</button>
+                    <button class="btn-action btn-later" onclick="addFav('${item.id}', 'later')">+ Позже</button>
+                    <button class="btn-action btn-done" onclick="addFav('${item.id}', 'watched')">✔ Архив</button>
                 </div>
             `;
-            list.appendChild(row);
+            list.appendChild(div);
         });
-    }, 500);
+    }, 600);
 }
 
 async function addFav(id, cat) {
@@ -163,7 +189,7 @@ async function addFav(id, cat) {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({post_id:id, category:cat})
     });
-    alert('Добавлено в избранное!');
+    alert('Добавлено!');
 }
 
 // Старт

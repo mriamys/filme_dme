@@ -10,7 +10,7 @@
 <body>
 
     <div id="search-ui" class="search-box">
-        <input type="text" id="q" placeholder="Поиск сериалов..." oninput="doSearch(this.value)">
+        <input type="text" id="q" placeholder="Поиск..." oninput="doSearch(this.value)">
         <div id="search-results"></div>
     </div>
 
@@ -23,6 +23,13 @@
             <img id="det-img" src="">
             <div class="hero-title" id="det-title"></div>
         </div>
+        
+        <div id="det-controls" class="manage-box" style="display:none;">
+            <button class="btn-action btn-watch" onclick="moveMovie('watching')">В Смотрю</button>
+            <button class="btn-action btn-later" onclick="moveMovie('later')">В Позже</button>
+            <button class="btn-action btn-done" onclick="moveMovie('watched')">В Архив</button>
+        </div>
+
         <div id="det-list" class="episodes-list"></div>
     </div>
 
