@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rezka WebApp</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #1c1c1e);
+            color: var(--tg-theme-text-color, #ffffff);
+            margin: 0; padding: 0;
+            padding-bottom: 80px; /* место для таббара */
+        }
+        /* Таббар внизу */
+        .tab-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--tg-theme-secondary-bg-color, #2c2c2e);
+            display: flex; justify-content: space-around;
+            padding: 10px 0;
+            border-top: 1px solid #3a3a3c;
+        }
+        .tab-btn {
+            background: none; border: none;
+            color: var(--tg-theme-hint-color, #8e8e93);
+            font-size: 12px; display: flex; flex-direction: column; align-items: center;
+        }
+        .tab-btn.active { color: var(--tg-theme-button-color, #0a84ff); }
+        .tab-icon { font-size: 20px; margin-bottom: 4px; }
+
+        /* Список фильмов */
+        .grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+            padding: 10px;
+        }
+        .card {
+            background: var(--tg-theme-secondary-bg-color, #2c2c2e);
+            border-radius: 10px; overflow: hidden;
+            position: relative;
+        }
+        .card img { width: 100%; height: auto; display: block; }
+        .card-info { padding: 8px; font-size: 12px; }
+        .card-title { font-weight: bold; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-status { color: #32d74b; font-size: 10px; }
+
+        /* Детали сериала (Модалка) */
+        #details-view {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--tg-theme-bg-color, #1c1c1e);
+            transform: translateX(100%); transition: transform 0.3s;
+            z-index: 10; overflow-y: auto; padding: 15px;
+        }
+        #details-view.open { transform: translateX(0); }
+        .back-btn {
+            background: none; border: none; color: var(--tg-theme-link-color);
+            font-size: 16px; margin-bottom: 15px; cursor: pointer;
+        }
+        
+        /* Список серий */
+        .season-title { font-size: 18px; margin: 20px 0 10px; color: var(--tg-theme-text-color); }
+        .episode-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px;
+            background: var(--tg-theme-secondary-bg-color);
+            margin-bottom: 5px; border-radius: 8px;
+        }
+        .episode-row.watched { opacity: 0.6; }
+        .checkbox {
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 2px solid var(--tg-theme-hint-color);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .checkbox.checked {
+            background: #32d74b; border-color: #32d74b;
+        }
+        .checkbox.checked::after {
+            content: '✓'; color: white; font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="grid" class="grid"></div>
+
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="loadCategory('watching', this)">
+            <span class="tab-icon">▶</span> Смотрю
+        </button>
+        <button class="tab-btn" onclick="loadCategory('later', this)">
+            <span class="tab-icon">🕒</span> Позже
+        </button>
+        <button class="tab-btn" onclick="loadCategory('watched', this)">
+            <span class="tab-icon">✅</span> Архив
+        </button>
+    </div>
+
+    <div id="details-view">
+        <button class="back-btn" onclick="closeDetails()">← Назад</button>
+        <h2 id="det-title"></h2>
+        <div id="det-episodes"></div>
+    </div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand(); // На весь экран
+
+    async function loadCategory(cat, btn) {
+        // Подсветка кнопок
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        if(btn) btn.classList.add('active');
+
+        document.getElementById('grid').innerHTML = '<div style="text-align:center; grid-column:span 2">Загрузка...</div>';
+
+        try {
+            const res = await fetch(`/api/${cat}`);
+            const data = await res.json();
+            
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            
+            data.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.onclick = () => openDetails(item.url, item.title);
+                card.innerHTML = `
+                    <img src="${item.poster}">
+                    <div class="card-info">
+                        <div class="card-title">${item.title}</div>
+                        <div class="card-status">${item.status}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        } catch (e) {
+            document.getElementById('grid').innerText = "Ошибка загрузки";
+        }
+    }
+
+    async function openDetails(url, title) {
+        document.getElementById('details-view').classList.add('open');
+        document.getElementById('det-title').innerText = title;
+        document.getElementById('det-episodes').innerHTML = 'Загрузка серий...';
+
+        const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+
+        if(data.error) {
+            document.getElementById('det-episodes').innerText = data.error;
+            return;
+        }
+
+        const container = document.getElementById('det-episodes');
+        container.innerHTML = '';
+
+        // Проходим по сезонам (ключи словаря)
+        Object.keys(data.seasons).forEach(seasonNum => {
+            const h3 = document.createElement('h3');
+            h3.className = 'season-title';
+            h3.innerText = `${seasonNum} сезон`;
+            container.appendChild(h3);
+
+            data.seasons[seasonNum].forEach(ep => {
+                const row = document.createElement('div');
+                row.className = `episode-row ${ep.watched ? 'watched' : ''}`;
+                row.innerHTML = `
+                    <span>${ep.title}</span>
+                    <div class="checkbox ${ep.watched ? 'checked' : ''}" 
+                         onclick="toggleEp('${ep.global_id}', this)"></div>
+                `;
+                container.appendChild(row);
+            });
+        });
+    }
+
+    async function toggleEp(globalId, el) {
+        // Визуально меняем сразу
+        const isChecked = el.classList.contains('checked');
+        if(isChecked) el.classList.remove('checked');
+        else el.classList.add('checked');
+
+        // Шлем запрос на сервер
+        await fetch('/api/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({global_id: globalId})
+        });
+        
+        // Вибрация телефона при успехе
+        tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function closeDetails() {
+        document.getElementById('details-view').classList.remove('open');
+    }
+
+    // Загружаем первую вкладку при старте
+    loadCategory('watching');
+</script>
+</body>
+</html>
