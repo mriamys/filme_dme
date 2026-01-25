@@ -9,7 +9,6 @@ load_dotenv()
 
 class RezkaClient:
     def __init__(self):
-        # Маскировка под Chrome
         self.session = curl_requests.Session(impersonate="chrome110")
         self.login = os.getenv("REZKA_LOGIN")
         self.password = os.getenv("REZKA_PASS")
@@ -19,42 +18,95 @@ class RezkaClient:
     def auth(self):
         if self.is_logged_in: return True
         try:
-            print("🔑 Авторизация...")
+            print("🔑 Auth...")
             headers = {"X-Requested-With": "XMLHttpRequest"}
             r = self.session.post(f"{self.origin}/ajax/login/", 
                                 data={"login_name": self.login, "login_password": self.password},
                                 headers=headers)
             if r.json().get('success'):
                 self.is_logged_in = True
-                print("✅ Вход выполнен")
+                print("✅ Auth Success")
                 return True
         except: pass
-        print("❌ Ошибка входа")
         return False
 
-    def _is_watched(self, tag):
-        """Проверка галочки (все варианты)"""
-        # 1. Класс на самом элементе
+    def _is_watched_check(self, tag):
+        """Проверяет наличие класса watched везде"""
+        if not tag: return False
+        
+        # 1. Прямой класс
         classes = tag.get("class", [])
         if "watched" in classes or "b-watched" in classes:
             return True
-        
-        # 2. Класс внутри (на иконке)
+            
+        # 2. Ищем иконку внутри (твой случай)
         # <i class="watch-episode-action watched">
         icon = tag.find(class_=lambda x: x and ("watch-episode-action" in x or "b-ico" in x))
         if icon:
             icon_classes = icon.get("class", [])
-            if "watched" in icon_classes or "b-watched" in icon_classes:
+            if "watched" in icon_classes:
                 return True
-                
         return False
 
+    def _parse_schedule_table(self, soup):
+        """Парсит таблицу графика выхода (она всегда есть в HTML!)"""
+        seasons = {}
+        # Ищем таблицу (иногда класс меняется, ищем по структуре)
+        table = soup.find("table", class_="b-post__schedule_table")
+        if not table: 
+            print("⚠️ Таблица графика не найдена")
+            return {}
+
+        print("📊 Сканирую таблицу графика...")
+        rows = table.find_all("tr")
+        
+        for tr in rows:
+            # Текст: "2 сезон 15 серия"
+            td_1 = tr.find(class_="td-1")
+            if not td_1: continue
+            
+            text = td_1.text.strip()
+            match = re.search(r'(\d+)\s*сезон\s*(\d+)\s*серия', text)
+            if not match: continue
+            
+            s_id = match.group(1)
+            e_id = match.group(2)
+            
+            # Глобальный ID (часто бывает в td-1 data-id)
+            global_id = td_1.get("data-id")
+            
+            # Статус просмотра (ищем иконку во всей строке)
+            # Твой пример: <i class="watch-episode-action watched" data-id="536410">
+            is_watched = False
+            
+            # Ищем конкретную иконку действия
+            action_icon = tr.find(class_="watch-episode-action")
+            if action_icon:
+                # Если нашли иконку, берем ID оттуда (он точнее)
+                if action_icon.get("data-id"):
+                    global_id = action_icon.get("data-id")
+                
+                if "watched" in action_icon.get("class", []):
+                    is_watched = True
+            else:
+                # Фолбек: проверяем всю строку
+                if self._is_watched_check(tr):
+                    is_watched = True
+
+            if s_id not in seasons: seasons[s_id] = []
+            seasons[s_id].append({
+                "title": text,
+                "episode": e_id,
+                "global_id": global_id,
+                "watched": is_watched
+            })
+            
+        return seasons
+
     def _parse_html_list(self, html_content):
-        """Разбирает HTML, который прислал API"""
+        """Парсит список плеера (li элементы)"""
         soup = BeautifulSoup(html_content, 'html.parser')
         seasons = {}
-        
-        # Ищем все li (серии)
         items = soup.find_all("li", class_="b-simple_episode__item")
         
         for item in items:
@@ -62,16 +114,13 @@ class RezkaClient:
                 s_id = item.get("data-season_id", "1")
                 e_id = item.get("data-episode_id", "1")
                 title = item.text.strip()
-                
-                # ID для галочки
                 global_id = item.get("data-id")
-                # Если нет на li, ищем внутри
+                
                 if not global_id:
                     inner = item.find(attrs={"data-id": True})
                     if inner: global_id = inner.get("data-id")
 
-                # Статус
-                is_watched = self._is_watched(item)
+                is_watched = self._is_watched_check(item)
 
                 if s_id not in seasons: seasons[s_id] = []
                 seasons[s_id].append({
@@ -79,85 +128,99 @@ class RezkaClient:
                     "global_id": global_id, "watched": is_watched
                 })
             except: continue
-            
         return seasons
 
     def get_series_details(self, url):
         if not self.auth(): return {"error": "Auth failed"}
         try:
-            print(f"🔎 Анализ страницы: {url}")
+            print(f"🔎 {url}")
             r = self.session.get(url)
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # 1. Постер HD
+            # Постер
             hq_poster = ""
             side = soup.find(class_="b-sidecover")
             if side:
                 if side.find('a'): hq_poster = side.find('a').get('href')
                 elif side.find('img'): hq_poster = side.find('img').get('src')
 
-            # 2. Ищем ID поста
             post_id = None
-            if soup.find(id="post_id"): 
-                post_id = soup.find(id="post_id").get("value")
+            if soup.find(id="post_id"): post_id = soup.find(id="post_id").get("value")
             else:
                 match = re.search(r'["\']post_id["\']\s*:\s*(\d+)', r.text)
                 if match: post_id = match.group(1)
 
-            if not post_id:
-                return {"error": "Не удалось найти ID сериала", "poster": hq_poster}
+            # === 1. ПАРСИМ ТАБЛИЦУ (Это база, она есть всегда) ===
+            table_seasons = self._parse_schedule_table(soup)
+            
+            # === 2. ПАРСИМ ПЛЕЕР (Через API или со страницы) ===
+            player_seasons = {}
+            
+            # Сначала пробуем найти список на странице (для активной озвучки)
+            player_seasons = self._parse_html_list(r.text)
+            
+            # Если на странице списка нет, пробуем API
+            if not player_seasons and post_id:
+                print("⚠️ Список плеера пуст, пробую API...")
+                # Ищем translator_id
+                translator_id = None
+                active = soup.find(class_="b-translator__item active")
+                if active: translator_id = active.get("data-translator_id")
+                else:
+                    match = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', r.text)
+                    if match: translator_id = match.group(1)
 
-            # 3. Ищем ID Озвучки (Translator ID)
-            translator_id = None
-            
-            # Сначала ищем активную (ту, которая выбрана у тебя в профиле или по умолчанию)
-            active_trans = soup.find(class_="b-translator__item active")
-            if active_trans:
-                translator_id = active_trans.get("data-translator_id")
-                print(f"🎙 Нашел активную озвучку ID: {translator_id}")
-            
-            # Если активной нет (бывает, если озвучка всего одна), ищем в скриптах
-            if not translator_id:
-                match = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', r.text)
-                if match: 
-                    translator_id = match.group(1)
-                    print(f"🎙 Нашел скрытую озвучку ID: {translator_id}")
+                payload = {
+                    "id": post_id, 
+                    "translator_id": translator_id if translator_id else "238",
+                    "action": "get_episodes"
+                }
+                try:
+                    r_ajax = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=payload)
+                    if r_ajax.json().get('success'):
+                        html = r_ajax.json().get('seasons') or r_ajax.json().get('episodes')
+                        player_seasons = self._parse_html_list(html)
+                        print(f"✅ API вернул {len(player_seasons)} сезонов")
+                except: pass
 
-            # 4. ДЕЛАЕМ ЗАПРОС К API ЗА ВСЕМИ СЕЗОНАМИ
-            # Даже если translator_id нет (null), API может вернуть дефолтную озвучку
-            print(f"🚀 Запрашиваю полный список серий через API (ID: {post_id})...")
+            # === 3. ОБЪЕДИНЕНИЕ (Самое важное) ===
+            # Мы берем за основу Плеер (там структура полная). 
+            # Но если в Таблице есть инфа о просмотре - накладываем её.
             
-            payload = {
-                "id": post_id,
-                "translator_id": translator_id if translator_id else "238", # 238 часто default
-                "action": "get_episodes"
-            }
+            final_seasons = player_seasons.copy()
             
-            r_ajax = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=payload)
-            data = r_ajax.json()
+            # Если плеера вообще не нашли, показываем таблицу (лучше чем ничего)
+            if not final_seasons:
+                print("⚠️ Плеера нет, показываю данные из таблицы")
+                final_seasons = table_seasons
             
-            if data.get('success'):
-                # API возвращает HTML со ВСЕМИ сезонами
-                html = data.get('seasons') or data.get('episodes')
-                seasons = self._parse_html_list(html)
-                
-                if seasons:
-                    print(f"✅ Успех! Загружено сезонов: {len(seasons)}")
-                    return {"seasons": seasons, "poster": hq_poster, "post_id": post_id}
-            
-            # Если API не сработал (например, это фильм), пробуем парсить саму страницу
-            print("⚠️ API не вернул серий. Пробую парсить страницу (возможно это фильм)...")
-            seasons = self._parse_html_list(r.text)
-            if seasons:
-                 return {"seasons": seasons, "poster": hq_poster, "post_id": post_id}
+            # Наложение данных из таблицы на данные плеера
+            elif table_seasons:
+                print("🔄 Объединяю данные...")
+                for s_id, t_eps in table_seasons.items():
+                    if s_id in final_seasons:
+                        for t_ep in t_eps:
+                            # Ищем эту серию в плеере
+                            for p_ep in final_seasons[s_id]:
+                                if p_ep['episode'] == t_ep['episode']:
+                                    # Если в таблице сказано WATCHED - верим таблице
+                                    if t_ep['watched']:
+                                        p_ep['watched'] = True
+                                    # Если в плеере нет ID, берем из таблицы
+                                    if not p_ep['global_id']:
+                                        p_ep['global_id'] = t_ep['global_id']
 
-            return {"error": "Серии не найдены", "poster": hq_poster, "post_id": post_id}
+            if final_seasons:
+                return {"seasons": final_seasons, "poster": hq_poster, "post_id": post_id}
+            
+            # Если это фильм (нет серий нигде)
+            return {"error": "Это фильм или сериал еще не вышел", "poster": hq_poster, "post_id": post_id}
 
         except Exception as e:
-            print(f"CRITICAL ERROR: {e}")
+            print(f"ERROR: {e}")
             return {"error": str(e)}
 
-    # --- Остальные методы без изменений ---
+    # ... Остальные методы (search, add_favorite и т.д.) ...
     def get_category_items(self, cat_id):
         if not self.auth(): return []
         try:
