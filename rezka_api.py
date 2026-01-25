@@ -32,6 +32,7 @@ class RezkaClient:
         return False
 
     def _is_watched_check(self, element):
+        """Проверка статуса просмотра"""
         if not element: return False
         classes = element.get("class", [])
         if "watched" in classes or "b-watched" in classes: return True
@@ -41,6 +42,7 @@ class RezkaClient:
         return False
 
     def _parse_schedule_table(self, soup):
+        """Парсинг таблицы (с фильтром)"""
         seasons = {}
         table = soup.find("table", class_="b-post__schedule_table")
         if not table: return {}
@@ -66,7 +68,7 @@ class RezkaClient:
             if action_icon and action_icon.get("data-id"):
                 global_id = action_icon.get("data-id")
             
-            if not global_id: continue
+            if not global_id: continue # Фильтр будущих серий
 
             is_watched = self._is_watched_check(tr)
 
@@ -84,65 +86,44 @@ class RezkaClient:
         return seasons
 
     def _parse_html_list(self, html_content):
-        """Парсер, который ест всё"""
+        """Парсер списка серий"""
         soup = BeautifulSoup(html_content, 'html.parser')
         seasons = {}
         
-        # 1. Сначала ищем контейнер списка
-        # Это может быть ul#simple-episodes-list-1 или ul.b-simple_episodes__list
-        lists = soup.find_all("ul", class_=lambda x: x and "simple_episodes__list" in x)
-        if not lists:
-            # Если нет явных списков, ищем все li
-            lists = [soup]
+        # Ищем элементы с атрибутом data-episode_id (это 100% серии)
+        items = soup.find_all(attrs={"data-episode_id": True})
+        
+        # Если не нашли, пробуем старый метод (по классу)
+        if not items:
+            items = soup.find_all("li", class_="b-simple_episode__item")
 
-        items = []
-        for lst in lists:
-            # Собираем все li внутри найденных списков
-            items.extend(lst.find_all("li"))
-
-        print(f"  📺 Найдено {len(items)} элементов списка")
+        if items:
+            print(f"  📺 Найдено {len(items)} серий")
+        else:
+            # Для дебага, если пусто
+            pass
 
         for item in items:
             try:
-                # Пытаемся достать данные из атрибутов
-                s_id = item.get("data-season_id")
-                e_id = item.get("data-episode_id")
+                s_id = item.get("data-season_id", "1")
+                e_id = item.get("data-episode_id", "1")
                 title = item.text.strip()
+                
                 global_id = item.get("data-id")
-
-                # Если атрибутов нет, пробуем парсить текст (для старых форматов)
-                if not e_id:
-                    # Иногда ID серии лежит в data-id, а глобальный в другом месте
-                    pass 
-
-                # Ищем глобальный ID внутри
                 if not global_id:
                     inner = item.find(attrs={"data-id": True})
                     if inner: global_id = inner.get("data-id")
 
-                # Если совсем ничего нет - пропускаем
-                if not global_id or not e_id: 
-                    continue
-
-                # Дефолтный сезон 1, если не указан
-                if not s_id: s_id = "1"
+                if not global_id: continue
 
                 is_watched = self._is_watched_check(item)
 
                 if s_id not in seasons: seasons[s_id] = []
-                
-                # Проверка дублей
-                exists = False
-                for ep in seasons[s_id]:
-                    if ep['episode'] == e_id: exists = True
-                
-                if not exists:
-                    seasons[s_id].append({
-                        "title": title, "episode": e_id, 
-                        "global_id": global_id, "watched": is_watched
-                    })
+                seasons[s_id].append({
+                    "title": title, "episode": e_id, 
+                    "global_id": global_id, "watched": is_watched
+                })
             except: continue
-            
         return seasons
 
     def get_series_details(self, url):
@@ -171,6 +152,7 @@ class RezkaClient:
             # 2. Плеер
             player_seasons = {}
             if post_id:
+                # Определяем озвучку
                 translator_id = None
                 match_tid = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', html_text)
                 if match_tid: translator_id = match_tid.group(1)
@@ -178,12 +160,13 @@ class RezkaClient:
                     active = soup.find(class_="b-translator__item active")
                     if active: translator_id = active.get("data-translator_id")
 
+                # Ищем сезоны через Regex
                 season_ids = re.findall(r'data-tab_id=["\'](\d+)["\']', html_text)
                 season_ids = sorted(list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0)
                 season_ids = [s for s in season_ids if s.isdigit() and int(s) < 200]
 
                 if season_ids:
-                    print(f"📋 Сезоны: {season_ids}")
+                    print(f"📋 Сезоны (Regex): {season_ids}")
                     for season_id in season_ids:
                         payload = {
                             "id": post_id, 
@@ -196,32 +179,40 @@ class RezkaClient:
                             r_ajax = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=payload)
                             data = r_ajax.json()
                             if data.get('success'):
-                                html = data.get('seasons') or data.get('episodes')
-                                season_data = self._parse_html_list(html)
-                                for s, eps in season_data.items():
-                                    if s not in player_seasons: player_seasons[s] = []
-                                    player_seasons[s].extend(eps)
+                                # --- ВАЖНОЕ ИСПРАВЛЕНИЕ ТУТ ---
+                                # Сначала берем episodes (список), если нет - seasons (вкладки/фильм)
+                                html = data.get('episodes') 
+                                if not html:
+                                    html = data.get('seasons')
+                                
+                                if html:
+                                    season_data = self._parse_html_list(html)
+                                    for s, eps in season_data.items():
+                                        if s not in player_seasons: player_seasons[s] = []
+                                        player_seasons[s].extend(eps)
                         except: pass
                 else:
-                    print("🚀 Качаю всё...")
+                    # Качаем всё
+                    print("🚀 Качаю всё сразу...")
                     payload = {"id": post_id, "translator_id": translator_id or "238", "action": "get_episodes"}
                     try:
                         r_ajax = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=payload)
                         data = r_ajax.json()
                         if data.get('success'):
-                            html = data.get('seasons') or data.get('episodes')
+                            html = data.get('episodes') or data.get('seasons')
                             player_seasons = self._parse_html_list(html)
                     except: pass
 
+            # Фолбек на страницу
             if not player_seasons:
-                print("⚠️ API пуст, беру страницу...")
+                print("⚠️ API не дал серий, читаем страницу...")
                 player_seasons = self._parse_html_list(html_text)
 
             # 3. Объединение
             final_seasons = player_seasons.copy()
             if not final_seasons: final_seasons = table_seasons
             elif table_seasons:
-                print("🔄 Объединение...")
+                print("🔄 Объединение с таблицей...")
                 for s_id, t_eps in table_seasons.items():
                     if s_id not in final_seasons:
                         final_seasons[s_id] = t_eps
@@ -238,6 +229,7 @@ class RezkaClient:
                         if not found:
                              final_seasons[s_id].append(t_ep)
 
+            # Удаляем пустые
             final_seasons = {k: v for k, v in final_seasons.items() if v}
 
             if final_seasons:
