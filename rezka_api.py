@@ -18,51 +18,68 @@ class RezkaClient:
     def auth(self):
         if self.is_logged_in: return True
         try:
+            print("🔑 Auth...")
             headers = {"X-Requested-With": "XMLHttpRequest"}
             r = self.session.post(f"{self.origin}/ajax/login/", 
                                 data={"login_name": self.login, "login_password": self.password},
                                 headers=headers)
             if r.json().get('success'):
                 self.is_logged_in = True
+                print("✅ Auth Success")
                 return True
         except: pass
         return False
 
+    def _is_element_watched(self, item_tag):
+        """
+        ЯДЕРНЫЙ МЕТОД: Рекурсивно ищет класс 'watched' или 'b-watched'
+        на самом элементе или ЛЮБОМ его потомке (span, i, div, b).
+        """
+        # 1. Проверяем сам тег li
+        classes = item_tag.get("class", [])
+        if "watched" in classes or "b-watched" in classes:
+            return True
+            
+        # 2. Проверяем всех детей (глубокий поиск)
+        # find() вернет первый элемент, у которого есть нужный класс
+        watched_child = item_tag.find(
+            lambda tag: tag.has_attr('class') and 
+            ('watched' in tag['class'] or 'b-watched' in tag['class'])
+        )
+        
+        if watched_child:
+            return True
+            
+        return False
+
     def _parse_episodes_from_html(self, soup):
         seasons = {}
-        # Ищем все элементы списка
         items = soup.find_all("li", class_="b-simple_episode__item")
         
         if not items: return None
 
+        print(f"🧩 Нашел {len(items)} элементов серий. Анализирую...")
+
         for item in items:
             try:
-                # 1. Базовые параметры
                 s_id = item.get("data-season_id", "1")
                 e_id = item.get("data-episode_id", "1")
                 title = item.text.strip()
                 
-                # 2. Ищем Глобальный ID и Статус просмотра
-                # Сначала пробуем на самом LI
+                # 1. Ищем глобальный ID (для галочки)
                 global_id = item.get("data-id")
-                is_watched = "watched" in item.get("class", []) or "b-watched" in item.get("class", [])
-
-                # 3. ЕСЛИ НЕ НАШЛИ -> Ищем во внутреннем теге <i> (твой случай!)
-                # <i class="watch-episode-action watched" data-id="...">
-                action_icon = item.find(class_="watch-episode-action")
                 
-                if action_icon:
-                    # Если ID не было на LI, берем с иконки
-                    if not global_id:
-                        global_id = action_icon.get("data-id")
-                    
-                    # Проверяем статус watched на иконке
-                    if "watched" in action_icon.get("class", []):
-                        is_watched = True
+                # Если на самом li нет ID, ищем внутри (например в <i data-id="...">)
+                if not global_id:
+                    inner_data = item.find(attrs={"data-id": True})
+                    if inner_data:
+                        global_id = inner_data.get("data-id")
 
-                # Еще один вариант (старый дизайн): <span class="b-ico">
-                if not is_watched and item.find(class_="b-ico"):
-                    is_watched = True
+                # 2. Проверяем статус ПРОСМОТРЕНО (Новый метод)
+                is_watched = self._is_element_watched(item)
+
+                if is_watched:
+                    print(f"   ✅ [S{s_id}E{e_id}] Просмотрено (ID: {global_id})")
 
                 if s_id not in seasons: seasons[s_id] = []
                 seasons[s_id].append({
@@ -160,6 +177,7 @@ class RezkaClient:
                 if match: translator_id = match.group(1)
 
             if post_id:
+                print("⚠️ HTML пуст, пробую API...")
                 payload = {"id": post_id, "action": "get_episodes"}
                 if translator_id: payload["translator_id"] = translator_id
                 
