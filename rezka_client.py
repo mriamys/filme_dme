@@ -358,7 +358,7 @@ class RezkaClient:
             return {"error": str(e)}
 
     # ------------------------
-    # Работа с закладками (С ДОБАВЛЕНИЕМ ГОДА)
+    # Работа с закладками
     # ------------------------
     def get_category_items(self, cat_id: str) -> List[Dict[str, Any]]:
         if not self.auth():
@@ -415,7 +415,6 @@ class RezkaClient:
         if not self.auth():
             return False
         try:
-            # ТУТ ИЗМЕНЕНО: вместо del_post отправляем add_post
             r = self.session.post(
                 f"{self.origin}/ajax/favorites/",
                 data={"post_id": post_id, "cat_id": cat_id, "action": "add_post"},
@@ -554,7 +553,15 @@ class RezkaClient:
                     if not anchor:
                         continue
                     url = anchor.get("href")
-                    item_id = anchor.get("data-id") or li.get("data-id") or None
+                    # ИСПРАВЛЕНО: Извлекаем ID из URL, если data-id нет
+                    item_id = anchor.get("data-id") or li.get("data-id")
+                    if not item_id and url:
+                        match = re.search(r'/(\d+)(?:-|\.)', url)
+                        if match:
+                            item_id = match.group(1)
+
+                    item_id = item_id or url # Fallback
+
                     title_span = li.find("span", class_="enty")
                     title = title_span.get_text(strip=True) if title_span else anchor.get_text(strip=True)
                     
@@ -573,7 +580,7 @@ class RezkaClient:
                     img = li.find("img")
                     poster = img.get("src") if img else ""
                     results.append({
-                        "id": item_id or url,
+                        "id": item_id,
                         "title": title,
                         "url": url,
                         "poster": poster,

@@ -51,7 +51,6 @@ function sortItems(items) {
     
     if (currentSort === 'year_desc' || currentSort === 'year_asc') {
         sorted.sort((a, b) => {
-            // Берем год из поля year, если есть, или парсим из title
             let ya = parseInt(a.year || (a.title.match(/\((\d{4})\)/) || [])[1] || 0);
             let yb = parseInt(b.year || (b.title.match(/\((\d{4})\)/) || [])[1] || 0);
             return currentSort === 'year_desc' ? yb - ya : ya - yb;
@@ -81,7 +80,6 @@ function renderSortedGrid() {
         div.className = 'card';
         div.onclick = () => openDetails(item.url, item.title, item.poster);
         
-        // Удаляем год из названия для чистоты (опционально)
         const cleanTitle = item.title.replace(/\s*\(\d{4}\)/, '');
         
         div.innerHTML = `
@@ -97,7 +95,6 @@ function renderSortedGrid() {
     });
 }
 
-// Загрузка сетки
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
@@ -119,11 +116,9 @@ async function loadGrid(cat) {
     }
 }
 
-// Переменные для деталей
 let currentPostId = null;
 let currentDetailsUrl = null;
 
-// Открытие модального окна
 async function openDetails(url, title, poster) {
     const modal = document.getElementById('details');
     modal.classList.add('open');
@@ -131,16 +126,11 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-title').innerText = title;
     document.getElementById('det-controls').style.display = 'none';
     
-    // --- НОВАЯ ЛОГИКА: Обновляем ссылку на сайт ---
     const siteLink = document.getElementById('det-site-link');
     if (siteLink) siteLink.href = url;
-    // ----------------------------------------------
 
-    // Сброс
     currentPostId = null; 
     
-    // Пытаемся сразу достать ID из URL (на случай если API затупит)
-    // URL типа: https://hdrezka.me/films/fiction/2259-interstellar-2014.html
     const match = url.match(/\/(\d+)-/);
     if (match) currentPostId = match[1];
 
@@ -157,13 +147,8 @@ async function openDetails(url, title, poster) {
         
         if (data.post_id) {
             currentPostId = data.post_id;
-        }
-        
-        // Показываем кнопки только если есть ID
-        if (currentPostId) {
             document.getElementById('det-controls').style.display = 'flex';
         }
-        
         if (data.poster) document.getElementById('det-img').src = data.poster;
         
         list.innerHTML = '';
@@ -171,7 +156,6 @@ async function openDetails(url, title, poster) {
             list.innerHTML = `<div style="text-align:center; padding:20px;">${data.error}</div>`;
         }
 
-        // Франшизы
         if (data.franchises && data.franchises.length > 0) {
             if (franchiseContainer) {
                 const fTitle = document.createElement('div');
@@ -199,7 +183,6 @@ async function openDetails(url, title, poster) {
             }
         }
 
-        // Сезоны
         if (data.seasons) {
             Object.keys(data.seasons).forEach(s => {
                 const h = document.createElement('div');
@@ -227,7 +210,6 @@ function closeDetails() {
     document.getElementById('details').classList.remove('open');
 }
 
-// Переместить фильм
 async function moveMovie(category) {
     if (!currentPostId) {
         alert('Ошибка: ID фильма не найден');
@@ -241,11 +223,9 @@ async function moveMovie(category) {
     });
     alert('Перенесено!');
     closeDetails();
-    // Обновляем текущий список
     loadGrid(currentCategory);
 }
 
-// Удалить фильм
 async function deleteMovie() {
     if (!currentPostId) {
         alert('Ошибка: ID фильма не найден');
@@ -308,8 +288,6 @@ function doSearch(val) {
         data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'search-item';
-            
-            // Отображаем год в поиске, если есть
             let titleHTML = item.title;
             
             div.innerHTML = `
@@ -325,14 +303,31 @@ function doSearch(val) {
     }, 600);
 }
 
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ ДОБАВЛЕНИЯ
 async function addFav(id, cat) {
+    // Пытаемся извлечь ID, если это ссылка
+    let postId = id;
+    const match = String(id).match(/\/(\d+)(?:-|\.)/);
+    if (match) {
+        postId = match[1];
+    }
+
     tg.HapticFeedback.notificationOccurred('success');
-    await fetch('/api/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: id, category: cat })
-    });
-    alert('Добавлено!');
+    try {
+        const res = await fetch('/api/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ post_id: postId, category: cat })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert('Добавлено!');
+        } else {
+            alert('Ошибка добавления');
+        }
+    } catch (e) {
+        alert('Ошибка сети');
+    }
 }
 
 loadGrid('watching');
