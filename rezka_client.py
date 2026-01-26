@@ -532,6 +532,29 @@ class RezkaClient:
             # Отладочный вывод
             print(f"DEBUG: Отправка Toggle Watch ID={global_id}")
             payload = {"id": global_id}
+            # Попробуем передать post_id (идентификатор сериала), если известен.
+            # На некоторых зеркалах HDRezka этот параметр используется для корректного
+            # обновления расписания. Получаем его из страницы, указанной в referer.
+            if referer:
+                try:
+                    # Загружаем страницу для получения post_id
+                    r_det = self.session.get(referer, headers={"Referer": self.origin})
+                    if r_det.status_code == 200:
+                        text = r_det.text
+                        # Пытаемся найти post_id в JS переменных вида 'post_id': 12345
+                        match_pid = re.search(r'["\']post_id["\']\s*:\s*(\d+)', text)
+                        post_id = None
+                        if match_pid:
+                            post_id = match_pid.group(1)
+                        else:
+                            soup_tmp = BeautifulSoup(text, "html.parser")
+                            pid_elem = soup_tmp.find(id="post_id")
+                            if pid_elem:
+                                post_id = pid_elem.get("value")
+                        if post_id:
+                            payload["post_id"] = post_id
+                except Exception:
+                    pass
             r = self.session.post(
                 f"{self.origin}/engine/ajax/schedule_watched.php",
                 data=payload,

@@ -53,6 +53,19 @@ async def lifespan(app: FastAPI):
             
     if bot:
         await bot.session.close()
+
+    # Закрываем HTTP‑сессию клиента Rezka и очищаем cookies.
+    try:
+        # Закрываем сессию и очищаем cookies, чтобы после перезапуска не остались старые куки/токены
+        client.session.close()
+        # На всякий случай очищаем cookie jar
+        if hasattr(client.session, "cookies"):
+            client.session.cookies.clear()
+        # Сбрасываем флаг логина
+        client.is_logged_in = False
+        print("✅ HTTP‑сессия HDRezka закрыта и очищена")
+    except Exception as e:
+        print(f"⚠️ Не удалось закрыть сессию Rezka: {e}")
     
     print("✅ Сервер остановлен.")
 
