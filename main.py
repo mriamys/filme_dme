@@ -3,7 +3,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from rezka_api import client
+from rezka_client import RezkaClient
+client = RezkaClient()
+
 
 app = FastAPI()
 
