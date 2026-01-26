@@ -57,24 +57,61 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-img').src = poster;
     document.getElementById('det-title').innerText = title;
     document.getElementById('det-controls').style.display = 'none';
-    document.getElementById('franchise-list').innerHTML = '';
+    
+    // Очищаем франшизы
+    const franchiseContainer = document.getElementById('det-franchises');
+    if (franchiseContainer) franchiseContainer.innerHTML = '';
+
     // Сохраняем URL страницы для использования в toggle
     currentDetailsUrl = url;
     const list = document.getElementById('det-list');
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка серий...</div>';
+    
     try {
         const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
         const data = await res.json();
+        
         if (data.post_id) {
             currentPostId = data.post_id;
             document.getElementById('det-controls').style.display = 'flex';
         }
         if (data.poster) document.getElementById('det-img').src = data.poster;
+        
         list.innerHTML = '';
         if (data.error) {
             list.innerHTML = `<div style="text-align:center; padding:20px;">${data.error}</div>`;
         }
-        // Рендер сезонов и эпизодов
+
+        // --- Рендеринг франшиз (если они пришли) ---
+        if (data.franchises && data.franchises.length > 0) {
+            if (franchiseContainer) {
+                const fTitle = document.createElement('div');
+                fTitle.className = 'season-title';
+                fTitle.innerText = 'Связанные проекты';
+                franchiseContainer.appendChild(fTitle);
+
+                const fScroll = document.createElement('div');
+                fScroll.className = 'franchise-scroll';
+
+                data.franchises.forEach(f => {
+                    const item = document.createElement('div');
+                    item.className = 'franchise-card';
+                    // Рекурсивный вызов для перехода по франшизе
+                    item.onclick = () => openDetails(f.url, f.title, f.poster);
+                    item.innerHTML = `
+                        <img src="${f.poster}">
+                        <div class="f-info">
+                            <div class="f-title">${f.title}</div>
+                            <div class="f-year">${f.info || ''}</div>
+                        </div>
+                    `;
+                    fScroll.appendChild(item);
+                });
+                franchiseContainer.appendChild(fScroll);
+            }
+        }
+
+        // --- Рендер сезонов и эпизодов ---
         if (data.seasons) {
             Object.keys(data.seasons).forEach(s => {
                 const h = document.createElement('div');
@@ -92,10 +129,6 @@ async function openDetails(url, title, poster) {
                     list.appendChild(row);
                 });
             });
-        }
-        // Загружаем франшизу, если есть ссылка
-        if (data.franchise_url) {
-            loadFranchise(data.franchise_url);
         }
     } catch (e) {
         list.innerHTML = '<div style="text-align:center; padding:20px;">Ошибка загрузки</div>';
@@ -161,13 +194,20 @@ function openSearch(btn) {
     btn.classList.add('active');
     document.getElementById('grid').style.display = 'none';
     document.getElementById('search-ui').style.display = 'block';
-    document.getElementById('q').focus();
+    const input = document.getElementById('q');
+    input.focus();
+    input.value = ''; // Очищаем поле при открытии
+    document.getElementById('search-results').innerHTML = '';
 }
 
 // Поиск с таймером
 let searchTimer;
 function doSearch(val) {
     clearTimeout(searchTimer);
+    if (val.length === 0) {
+        document.getElementById('search-results').innerHTML = '';
+        return;
+    }
     searchTimer = setTimeout(async () => {
         if (val.length < 3) return;
         const res = await fetch(`/api/search?q=${encodeURIComponent(val)}`);
@@ -199,29 +239,6 @@ async function addFav(id, cat) {
         body: JSON.stringify({ post_id: id, category: cat })
     });
     alert('Добавлено!');
-}
-
-// Загрузка франшизных проектов
-async function loadFranchise(url) {
-    try {
-        const res = await fetch('/api/franchise?url=' + encodeURIComponent(url));
-        const items = await res.json();
-        const container = document.getElementById('franchise-list');
-        if (!items || items.length === 0) {
-            container.innerHTML = '';
-            return;
-        }
-        let html = '<div class="fr-title">Франшиза</div>';
-        items.forEach(item => {
-            html += `<div class="fr-item" onclick="openDetails('${item.url}', '${item.title}', '${item.poster || ''}')">
-                        <img src="${item.poster}" alt="" class="fr-img">
-                        <div class="fr-name">${item.title}${item.year ? ' (' + item.year + ')' : ''}</div>
-                    </div>`;
-        });
-        container.innerHTML = html;
-    } catch (e) {
-        console.error('Ошибка загрузки франшизы', e);
-    }
 }
 
 // Инициализация: подгружаем список «Смотрю»

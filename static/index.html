@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rezka App</title>
-    <!-- Telegram Web App API -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
 
     <div id="search-ui" class="search-box">
-        <input type="text" id="q" placeholder="Поиск сериалов..." oninput="doSearch(this.value)">
+        <input type="search" id="q" placeholder="Поиск сериалов..." oninput="doSearch(this.value)" autocomplete="off">
         <div id="search-results"></div>
     </div>
 
@@ -35,8 +34,9 @@
             <button class="btn-action btn-delete" onclick="deleteMovie()">Удалить</button>
         </div>
 
+        <div id="det-franchises" class="franchise-list"></div>
+
         <div id="det-list" class="episodes-list"></div>
-        <div id="franchise-list" class="franchise-list"></div>
     </div>
 
     <div class="tab-bar">

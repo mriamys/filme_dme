@@ -135,9 +135,10 @@ class RezkaClient:
                     )
         return seasons
 
-    def _parse_html_list(self, html_content: str) -> Dict[str, Dict[str, Any]]:
+    def _parse_html_list(self, html_content: str, default_season: str = "1") -> Dict[str, Dict[str, Any]]:
         """
         Парсит список эпизодов из HTML, возвращая уникальные эпизоды.
+        Принимает default_season для случаев, когда API возвращает список без номеров сезонов.
         """
         soup = BeautifulSoup(html_content, "html.parser")
         unique_episodes: Dict[str, Dict[str, Any]] = {}
@@ -159,7 +160,8 @@ class RezkaClient:
             li_items = cont.find_all("li", class_="b-simple_episode__item")
             for item in li_items:
                 try:
-                    s_id = item.get("data-season_id") or container_s_id or "1"
+                    # ВАЖНО: используем default_season, если нет других указаний
+                    s_id = item.get("data-season_id") or container_s_id or default_season
                     e_id = item.get("data-episode_id")
                     if not e_id:
                         continue
@@ -197,13 +199,6 @@ class RezkaClient:
             return {"error": "Auth failed"}
         try:
             r = self.session.get(url)
-            # Если страница ведёт на другой домен (например, .sh), обновляем origin
-            try:
-                parsed = urlparse(url)
-                if parsed.scheme and parsed.netloc:
-                    self.origin = f"{parsed.scheme}://{parsed.netloc}"
-            except Exception:
-                pass
             html_text = r.text
             soup = BeautifulSoup(html_text, "html.parser")
             # Постер
@@ -221,9 +216,22 @@ class RezkaClient:
                 post_id = match_pid.group(1)
             elif soup.find(id="post_id"):
                 post_id = soup.find(id="post_id").get("value")
+            
+            # --- ПАРСИНГ ФРАНШИЗЫ ---
+            franchises = []
+            franchise_link = soup.find("a", class_="b-post__franchise_link_title")
+            if franchise_link:
+                franchise_url = franchise_link.get("href")
+                if franchise_url:
+                    # Если ссылка относительная, добавляем домен
+                    if franchise_url.startswith("/"):
+                        franchise_url = urljoin(self.origin, franchise_url)
+                    franchises = self.get_franchise_items(franchise_url)
+
             # Таблица расписания
             table_seasons = self._parse_schedule_table(soup)
             all_unique_episodes: Dict[str, Dict[str, Any]] = {}
+            
             if post_id:
                 translator_id: Optional[str] = None
                 match_tid = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', html_text)
@@ -235,9 +243,13 @@ class RezkaClient:
                         translator_id = active.get("data-translator_id")
                 # ID сезонов
                 season_ids = re.findall(r'data-tab_id=["\'](\d+)["\']', html_text)
-                season_ids = sorted(list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0)
+                season_ids = sorted(
+                    list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0
+                )
                 season_ids = [s for s in season_ids if s.isdigit() and int(s) < 200]
+                
                 if season_ids:
+                    # Загружаем каждый сезон отдельно
                     for season_id in season_ids:
                         payload = {
                             "id": post_id,
@@ -253,11 +265,13 @@ class RezkaClient:
                             data = r_ajax.json()
                             if data.get("success"):
                                 html = data.get("episodes") or data.get("seasons")
-                                new_eps = self._parse_html_list(html)
+                                # ВАЖНО: передаем season_id, чтобы не скидывало в 1 сезон
+                                new_eps = self._parse_html_list(html, default_season=season_id)
                                 all_unique_episodes.update(new_eps)
                         except Exception:
                             continue
                 else:
+                    # Если вкладок нет (один сезон или фильм), грузим всё
                     payload = {
                         "id": post_id,
                         "translator_id": translator_id or "238",
@@ -274,10 +288,11 @@ class RezkaClient:
                             all_unique_episodes.update(new_eps)
                     except Exception:
                         pass
-            # fallback
+            # fallback на HTML страницы
             if not all_unique_episodes:
                 new_eps = self._parse_html_list(html_text)
                 all_unique_episodes.update(new_eps)
+            
             # Объединяем таблицу и список
             final_seasons_dict: Dict[str, List[Dict[str, Any]]] = {}
             # Сначала из player
@@ -301,55 +316,34 @@ class RezkaClient:
                                 found = True
                                 if t_ep["watched"]:
                                     p_ep["watched"] = True
-                                if not p_ep.get("global_id"):
+                                if not p_ep["global_id"]:
                                     p_ep["global_id"] = t_ep["global_id"]
                                 break
                         if not found:
                             final_seasons_dict[s_id].append(t_ep)
+            
             # Сортируем
             sorted_seasons: Dict[str, List[Dict[str, Any]]] = {}
-            sorted_keys = sorted(final_seasons_dict.keys(), key=lambda x: int(x) if x.isdigit() else 999)
+            sorted_keys = sorted(
+                final_seasons_dict.keys(), key=lambda x: int(x) if x.isdigit() else 999
+            )
             for s in sorted_keys:
                 eps = final_seasons_dict[s]
                 eps.sort(key=lambda x: int(x["episode"]) if x["episode"].isdigit() else 999)
                 sorted_seasons[s] = eps
-            # Пытаемся найти ссылку на страницу франшизы/серии, если она есть
-            franchise_url: Optional[str] = None
-            try:
-                # В некоторых версиях сайта ссылка на все проекты находится в ссылке с классом
-                # b-post__franchise_link_title внутри блока b-sidetitle
-                fr_anchor = soup.find("a", class_="b-post__franchise_link_title")
-                if fr_anchor and fr_anchor.get("href"):
-                    franchise_url = urljoin(self.origin, fr_anchor.get("href"))
-                else:
-                    # fallback: ищем любую ссылку, содержащую /franchises/
-                    link_fr = soup.find("a", href=re.compile(r"/franchises/"))
-                    if link_fr and link_fr.get("href"):
-                        franchise_url = urljoin(self.origin, link_fr.get("href"))
-                    else:
-                        # Ищем заголовок «Все проекты ...»
-                        heading = soup.find(
-                            lambda tag: tag.name in ["h2", "h3", "div"]
-                            and tag.get_text().strip().lower().startswith("все проекты")
-                        )
-                        if heading:
-                            next_link = heading.find_next("a", href=True)
-                            if next_link:
-                                franchise_url = urljoin(self.origin, next_link.get("href"))
-            except Exception:
-                franchise_url = None
+            
             if sorted_seasons:
                 return {
-                    "seasons": sorted_seasons,
-                    "poster": hq_poster,
+                    "seasons": sorted_seasons, 
+                    "poster": hq_poster, 
                     "post_id": post_id,
-                    "franchise_url": franchise_url,
+                    "franchises": franchises
                 }
             return {
-                "error": "Нет серий",
-                "poster": hq_poster,
+                "error": "Нет серий", 
+                "poster": hq_poster, 
                 "post_id": post_id,
-                "franchise_url": franchise_url,
+                "franchises": franchises
             }
         except Exception as e:
             return {"error": str(e)}
@@ -616,5 +610,6 @@ class RezkaClient:
         except Exception:
             pass
         return items
+
 
 __all__ = ["RezkaClient"]
