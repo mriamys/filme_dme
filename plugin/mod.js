@@ -53,9 +53,10 @@
         comp.build = function(items) {
             console.log('[Rezka] Building', items.length, 'cards');
 
-            // Инициализируем скролл. Важно: убираем step, пусть Lampa считает сама.
+            // ВЕРНУЛ step: 250, чтобы ручной скролл (plus/minus) знал шаг прокрутки
             scroll = new Lampa.Scroll({
-                horizontal: false
+                horizontal: false,
+                step: 250
             });
 
             var grid = $('<div class="rezka-grid"></div>');
@@ -148,12 +149,10 @@
             card.data('year', year);
             card.data('media_type', mediaType);
 
-            // --- ОСНОВНАЯ ЛОГИКА СКРОЛЛА ---
-            // Скролл происходит здесь, когда элемент получает фокус
             card.on('hover:focus', function() {
                 last_item = item;
                 
-                // Обновляем позицию скролла под текущую карточку
+                // Оставляем update на всякий случай, но основной скролл будет через контроллер
                 if (scroll) scroll.update(card);
 
                 $('.rezka-card').css({
@@ -182,7 +181,6 @@
                 comp.search(titleRuClean, titleEn, year, mediaType);
             });
             
-            // Добавляем вызов меню на долгое нажатие или отдельную кнопку (опционально, оставил как fallback)
             card.on('hover:long', function() {
                  comp.menu(item);
             });
@@ -190,7 +188,6 @@
             return card;
         };
 
-        // Поиск по двум названиям
         comp.search = function(titleRu, titleEn, year, mediaType) {
             Lampa.Loading.start(function() {});
 
@@ -218,7 +215,6 @@
                         return;
                     }
 
-                    // Ищем точное совпадение по году
                     var exactMatch = null;
                     if (year) {
                         for (var i = 0; i < allResults.length; i++) {
@@ -271,7 +267,6 @@
             });
         };
 
-        // Показать выбор из TMDB
         comp.showSelection = function(results, mediaType) {
             if (isModalOpen) return;
             isModalOpen = true;
@@ -509,24 +504,33 @@
             console.log('[Rezka] Start');
 
             // --- ИСПРАВЛЕННЫЙ КОНТРОЛЛЕР ---
-            // Мы просто говорим навигатору "двигайся".
-            // Скролл (scroll.update) сработает автоматически в comp.card на событии hover:focus.
-            // Мы больше НЕ вызываем scroll.plus() вручную - это вызывало ошибку.
+            // Возвращаем принудительный скролл (scroll.minus/plus) из старой версии,
+            // но добавляем проверку if(scroll), чтобы избежать ошибки Script Error.
             Lampa.Controller.add('rezka', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
                     Lampa.Controller.collectionFocus(last_item, comp.html);
                 },
                 up: function() {
-                    if (Navigator.canmove('up')) Navigator.move('up');
-                    else Lampa.Controller.toggle('head');
+                    if (Navigator.canmove('up')) {
+                        Navigator.move('up');
+                        if (scroll) scroll.minus(); // Принудительно листаем вверх
+                    } else {
+                        Lampa.Controller.toggle('head');
+                    }
                 },
                 down: function() {
-                    if (Navigator.canmove('down')) Navigator.move('down');
+                    if (Navigator.canmove('down')) {
+                        Navigator.move('down');
+                        if (scroll) scroll.plus(); // Принудительно листаем вниз
+                    }
                 },
                 left: function() {
-                    if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
+                    if (Navigator.canmove('left')) {
+                        Navigator.move('left');
+                    } else {
+                        Lampa.Controller.toggle('menu');
+                    }
                 },
                 right: function() {
                     if (Navigator.canmove('right')) Navigator.move('right');
@@ -536,8 +540,6 @@
                 }
             });
 
-            // Убрали слушатель цветных кнопок (keydown), чтобы не было конфликтов
-            
             Lampa.Controller.toggle('rezka');
         };
 
@@ -550,6 +552,7 @@
         comp.destroy = function() {
             Lampa.Controller.clear();
             if (scroll) scroll.destroy();
+            scroll = null; // Очищаем переменную для безопасности
             comp.html.remove();
         };
 
@@ -566,8 +569,8 @@
         if (!window.Lampa) return;
 
         Lampa.Component.add('rezka_watching', function() { return new RezkaCategory('watching'); });
-        Lampa.Component.add('rezka_later',    function() { return new RezkaCategory('later');    });
-        Lampa.Component.add('rezka_watched',  function() { return new RezkaCategory('watched');  });
+        Lampa.Component.add('rezka_later',    function() { return new RezkaCategory('later');    });
+        Lampa.Component.add('rezka_watched',  function() { return new RezkaCategory('watched');  });
 
         setTimeout(function() {
             $('[data-action^="rezka_"]').remove();
@@ -575,8 +578,8 @@
             var menu = $('.menu .menu__list').eq(0);
             [
                 { action: 'rezka_watching', comp: 'rezka_watching', icon: '▶', text: 'Смотрю' },
-                { action: 'rezka_later',    comp: 'rezka_later',    icon: '⏳', text: 'Позже'   },
-                { action: 'rezka_watched',  comp: 'rezka_watched',  icon: '✅', text: 'Архив'  }
+                { action: 'rezka_later',    comp: 'rezka_later',    icon: '⏳', text: 'Позже'   },
+                { action: 'rezka_watched',  comp: 'rezka_watched',  icon: '✅', text: 'Архив'  }
             ].forEach(function(item) {
                 var mi = $(
                     '<li class="menu__item selector" data-action="' + item.action + '">' +
