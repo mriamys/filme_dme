@@ -53,12 +53,11 @@
         comp.build = function(items) {
             console.log('[Rezka] Building', items.length, 'cards');
 
-            // Уничтожаем старый скролл если есть, чтобы избежать ошибок
             if (scroll) scroll.destroy();
 
+            // Создаем скролл
             scroll = new Lampa.Scroll({
-                horizontal: false,
-                step: 250 // Шаг прокрутки
+                horizontal: false
             });
 
             var grid = $('<div class="rezka-grid"></div>');
@@ -151,18 +150,25 @@
             card.data('year', year);
             card.data('media_type', mediaType);
 
+            // --- ИСПРАВЛЕННАЯ ЛОГИКА СКРОЛЛА ---
             card.on('hover:focus', function() {
                 last_item = item;
                 
-                // Основной механизм скролла: подгоняем экран под карточку
-                if (scroll) scroll.update(card);
+                // Используем $(this) для надежности
+                var _this = $(this);
+                
+                // Обновляем позицию скролла ТОЛЬКО через update
+                // Это заставляет Lampa прокрутить страницу к активному элементу
+                if (scroll) {
+                    scroll.update(_this);
+                }
 
                 $('.rezka-card').css({
                     'transform': 'scale(1)',
                     'box-shadow': 'none',
                     'z-index': '1'
                 });
-                card.css({
+                _this.css({
                     'transform': 'scale(1.05)',
                     'box-shadow': '0 8px 20px rgba(255,255,255,0.3)',
                     'z-index': '10'
@@ -170,7 +176,7 @@
             });
 
             card.on('hover:blur', function() {
-                card.css({
+                $(this).css({
                     'transform': 'scale(1)',
                     'box-shadow': 'none',
                     'z-index': '1'
@@ -183,6 +189,7 @@
                 comp.search(titleRuClean, titleEn, year, mediaType);
             });
             
+            // Долгое нажатие открывает меню (как альтернатива цветным кнопкам)
             card.on('hover:long', function() {
                  comp.menu(item);
             });
@@ -505,6 +512,10 @@
         comp.start = function() {
             console.log('[Rezka] Start');
 
+            // --- ИСПРАВЛЕННЫЙ КОНТРОЛЛЕР ---
+            // Убрали все вызовы scroll.plus/minus, которые вызывали ошибку.
+            // Теперь только Navigator переключает фокус, а скролл происходит
+            // автоматически через событие hover:focus на карточке.
             Lampa.Controller.add('rezka', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
@@ -513,8 +524,6 @@
                 up: function() {
                     if (Navigator.canmove('up')) {
                         Navigator.move('up');
-                        // ВАЖНО: Обернули в try-catch, чтобы избежать "Script Error"
-                        try { if (scroll) scroll.minus(); } catch(e) {}
                     } else {
                         Lampa.Controller.toggle('head');
                     }
@@ -522,8 +531,6 @@
                 down: function() {
                     if (Navigator.canmove('down')) {
                         Navigator.move('down');
-                        // ВАЖНО: Обернули в try-catch, чтобы избежать "Script Error"
-                        try { if (scroll) scroll.plus(); } catch(e) {}
                     }
                 },
                 left: function() {
