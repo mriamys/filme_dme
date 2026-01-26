@@ -53,10 +53,12 @@
         comp.build = function(items) {
             console.log('[Rezka] Building', items.length, 'cards');
 
-            // ВЕРНУЛ step: 250, чтобы ручной скролл (plus/minus) знал шаг прокрутки
+            // Уничтожаем старый скролл если есть, чтобы избежать ошибок
+            if (scroll) scroll.destroy();
+
             scroll = new Lampa.Scroll({
                 horizontal: false,
-                step: 250
+                step: 250 // Шаг прокрутки
             });
 
             var grid = $('<div class="rezka-grid"></div>');
@@ -152,7 +154,7 @@
             card.on('hover:focus', function() {
                 last_item = item;
                 
-                // Оставляем update на всякий случай, но основной скролл будет через контроллер
+                // Основной механизм скролла: подгоняем экран под карточку
                 if (scroll) scroll.update(card);
 
                 $('.rezka-card').css({
@@ -503,9 +505,6 @@
         comp.start = function() {
             console.log('[Rezka] Start');
 
-            // --- ИСПРАВЛЕННЫЙ КОНТРОЛЛЕР ---
-            // Возвращаем принудительный скролл (scroll.minus/plus) из старой версии,
-            // но добавляем проверку if(scroll), чтобы избежать ошибки Script Error.
             Lampa.Controller.add('rezka', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
@@ -514,7 +513,8 @@
                 up: function() {
                     if (Navigator.canmove('up')) {
                         Navigator.move('up');
-                        if (scroll) scroll.minus(); // Принудительно листаем вверх
+                        // ВАЖНО: Обернули в try-catch, чтобы избежать "Script Error"
+                        try { if (scroll) scroll.minus(); } catch(e) {}
                     } else {
                         Lampa.Controller.toggle('head');
                     }
@@ -522,7 +522,8 @@
                 down: function() {
                     if (Navigator.canmove('down')) {
                         Navigator.move('down');
-                        if (scroll) scroll.plus(); // Принудительно листаем вниз
+                        // ВАЖНО: Обернули в try-catch, чтобы избежать "Script Error"
+                        try { if (scroll) scroll.plus(); } catch(e) {}
                     }
                 },
                 left: function() {
@@ -552,7 +553,7 @@
         comp.destroy = function() {
             Lampa.Controller.clear();
             if (scroll) scroll.destroy();
-            scroll = null; // Очищаем переменную для безопасности
+            scroll = null;
             comp.html.remove();
         };
 
