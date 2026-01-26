@@ -7,7 +7,6 @@
 
     function MyRezkaComponent(object) {
         var comp = {};
-
         comp.html = $('<div class="items items--vertical"></div>');
 
         comp.create = function () {
@@ -79,21 +78,23 @@
         // Показываем список для выбора
         // ========================================
         function showSelectionModal(results, mediaType, onSelect) {
-            var modal = Lampa.Modal.open({
+            // ✅ ИСПРАВЛЕНО: Сохраняем ссылку на модалку
+            var modalInstance = null;
+            
+            var modalHTML = $('<div class="tmdb-select-list"></div>');
+            
+            modalInstance = Lampa.Modal.open({
                 title: 'Выберите правильный вариант',
-                html: $('<div class="tmdb-select-list"></div>'),
+                html: modalHTML,
                 onBack: function() {
+                    console.log('[Rezka] 🔙 Закрытие модалки (Back)');
                     Lampa.Modal.close();
                     Lampa.Controller.toggle('content');
-                },
-                onSelect: function() {}
+                }
             });
 
-            var list = $('.tmdb-select-list');
-            list.empty();
-
             if (!results.length) {
-                list.append('<div style="padding:20px;text-align:center;color:#999">Ничего не найдено</div>');
+                modalHTML.append('<div style="padding:20px;text-align:center;color:#999">Ничего не найдено</div>');
                 return;
             }
 
@@ -116,37 +117,62 @@
                     alignItems: 'center'
                 });
 
-                var posterEl = $('<img>').attr('src', poster).css({
-                    width: '60px',
-                    height: '90px',
-                    objectFit: 'cover',
-                    borderRadius: '4px',
-                    marginRight: '15px'
-                });
+                if (poster) {
+                    var posterEl = $('<img>').attr('src', poster).css({
+                        width: '60px',
+                        height: '90px',
+                        objectFit: 'cover',
+                        borderRadius: '4px',
+                        marginRight: '15px',
+                        flexShrink: 0
+                    });
+                    card.append(posterEl);
+                }
 
                 var infoEl = $('<div></div>').css({ flex: 1 });
-                infoEl.append('<div style="font-weight:bold;margin-bottom:5px">' + title + ' (' + year + ')</div>');
-                infoEl.append('<div style="font-size:12px;color:#999;line-height:1.4">' + 
-                    (overview.length > 150 ? overview.substring(0, 150) + '...' : overview) + 
+                infoEl.append('<div style="font-weight:bold;margin-bottom:5px;font-size:14px">' + title + ' (' + year + ')</div>');
+                infoEl.append('<div style="font-size:11px;color:#999;line-height:1.3;max-height:40px;overflow:hidden">' + 
+                    (overview.length > 100 ? overview.substring(0, 100) + '...' : overview) + 
                 '</div>');
 
-                card.append(posterEl);
                 card.append(infoEl);
 
-                // ✅ ИСПРАВЛЕНО: Закрываем модалку ПЕРЕД открытием карточки
-                card.on('hover:enter', function() {
+                // ✅ ИСПРАВЛЕНО: Правильное закрытие модалки
+                card.on('hover:enter', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
                     console.log('[Rezka] 📌 Выбрано:', title, item.id);
-                    Lampa.Modal.close(); // ← СНАЧАЛА ЗАКРЫВАЕМ
+                    
+                    // Сначала закрываем модалку
+                    Lampa.Modal.close();
+                    modalHTML.remove();
+                    
+                    // Затем открываем карточку
                     setTimeout(function() {
-                        onSelect(item); // ← ПОТОМ ОТКРЫВАЕМ
-                    }, 100);
+                        onSelect(item);
+                    }, 150);
+                });
+                
+                card.on('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    console.log('[Rezka] 📌 Клик:', title, item.id);
+                    
+                    Lampa.Modal.close();
+                    modalHTML.remove();
+                    
+                    setTimeout(function() {
+                        onSelect(item);
+                    }, 150);
                 });
 
-                list.append(card);
+                modalHTML.append(card);
 
                 if (index === 0) {
-                    Lampa.Controller.collectionSet(list);
-                    Lampa.Controller.collectionFocus(card[0], list);
+                    Lampa.Controller.collectionSet(modalHTML);
+                    Lampa.Controller.collectionFocus(card[0], modalHTML);
                 }
             });
         }
@@ -179,112 +205,89 @@
             var body = $('<div class="category-full__body" style="display:flex;flex-wrap:wrap;gap:12px;padding-bottom:2em"></div>');
 
             items.forEach(function (item) {
-                console.log('[Rezka] 🎨 Рендер карточки:', item.title);
-                console.log('[Rezka] 📸 Оригинальная картинка:', item.poster);
+                console.log('[Rezka] 🎨 Рендер:', item.title);
                 
-                // ✅ РАСШИРЕННАЯ ОЧИСТКА НАЗВАНИЯ (как в боте)
+                // ✅ ПАРСИНГ НАЗВАНИЯ
                 var rawTitle = item.title || '';
                 var yearMatch = rawTitle.match(/\((\d{4})\)/);
                 var year = yearMatch ? yearMatch[1] : '';
                 
-                // Убираем год
                 var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
-                // Берем только русское название (до слеша)
                 var titleRu = titleNoYear.split('/')[0].trim();
-                // Убираем все до двоеточия для сериалов типа "911: Одинокая звезда"
                 var titleClean = titleRu.split(':')[0].trim();
 
-                console.log('[Rezka] 📝 Обработка названия:');
-                console.log('   Исходное:', rawTitle);
-                console.log('   Без года:', titleNoYear);
-                console.log('   Русское:', titleRu);
-                console.log('   Чистое:', titleClean);
+                console.log('[Rezka] 📝', rawTitle, '→', titleClean);
 
-                // Определяем тип
                 const isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                 const mediaType = isTv ? 'tv' : 'movie';
 
-                // ✅ ДЕТАЛЬНЫЙ ДЕБАГ КАРТИНОК
+                // ✅ ИСПРАВЛЕНО: Картинка напрямую, без Lampa Template
                 var posterUrl = '';
                 if (item.poster) {
                     posterUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(item.poster);
-                    console.log('[Rezka] 🖼️ Картинка #1 - Исходный URL:', item.poster);
-                    console.log('[Rezka] 🖼️ Картинка #2 - Проксированный URL:', posterUrl);
-                    console.log('[Rezka] 🖼️ Картинка #3 - Полный путь:', posterUrl);
-                } else {
-                    console.warn('[Rezka] ⚠️ Нет URL постера для:', item.title);
+                    console.log('[Rezka] 🖼️ URL:', posterUrl);
                 }
 
-                // ✅ КАРТОЧКА С ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИЕЙ
-                var cardData = {
-                    title: titleClean,
-                    original_title: rawTitle,
-                    release_year: year,
-                    img: posterUrl
-                };
-
-                // Добавляем статус серии (если есть)
-                if (item.status) {
-                    cardData.number_of_seasons = item.status; // "1 сезон, 9 серия"
-                }
-
-                console.log('[Rezka] 🎴 Данные карточки:', cardData);
-
-                var card = Lampa.Template.get('card', cardData);
-
-                card.addClass('card--collection');
+                // ✅ СОЗДАЕМ КАРТОЧКУ ВРУЧНУЮ (без Template)
+                var card = $('<div class="card selector card--collection"></div>');
                 card.css({ 
                     width: '16.6%', 
                     minWidth: '140px', 
                     cursor: 'pointer',
-                    marginBottom: '20px'
+                    marginBottom: '20px',
+                    position: 'relative'
                 });
 
-                // ✅ ДОБАВЛЯЕМ СТАТУС ПОД НАЗВАНИЕМ (как в боте)
+                var cardView = $('<div class="card__view"></div>');
+                
+                // Постер
+                if (posterUrl) {
+                    var cardImg = $('<div class="card__img"></div>').css({
+                        backgroundImage: 'url(' + posterUrl + ')',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        paddingBottom: '150%',
+                        borderRadius: '8px'
+                    });
+                    cardView.append(cardImg);
+                    
+                    console.log('[Rezka] ✅ Постер установлен:', titleClean);
+                } else {
+                    console.log('[Rezka] ⚠️ Нет постера:', titleClean);
+                }
+                
+                // Название
+                var cardTitle = $('<div class="card__title"></div>').text(titleClean);
+                cardView.append(cardTitle);
+                
+                // Статус серии
                 if (item.status) {
                     var statusDiv = $('<div class="card__episode"></div>').text(item.status);
                     statusDiv.css({
                         position: 'absolute',
-                        bottom: '30px',
-                        left: '10px',
-                        right: '10px',
-                        padding: '5px',
-                        background: 'rgba(0,0,0,0.8)',
+                        bottom: '25px',
+                        left: '5px',
+                        right: '5px',
+                        padding: '3px 5px',
+                        background: 'rgba(0,0,0,0.9)',
                         borderRadius: '4px',
-                        fontSize: '12px',
+                        fontSize: '11px',
                         textAlign: 'center',
                         color: '#fff'
                     });
-                    card.find('.card__view').append(statusDiv);
+                    cardView.append(statusDiv);
                 }
-
-                // ✅ ПРОВЕРКА ЗАГРУЗКИ КАРТИНКИ
-                var imgElement = card.find('img.card__img');
-                if (imgElement.length) {
-                    console.log('[Rezka] 🖼️ Картинка #4 - IMG элемент найден');
-                    console.log('[Rezka] 🖼️ Картинка #5 - SRC установлен:', imgElement.attr('src'));
-                    
-                    imgElement.on('load', function() {
-                        console.log('[Rezka] ✅ Картинка загружена успешно:', titleClean);
-                    });
-                    
-                    imgElement.on('error', function() {
-                        console.error('[Rezka] ❌ Ошибка загрузки картинки:', titleClean);
-                        console.error('[Rezka] ❌ URL:', posterUrl);
-                        console.error('[Rezka] ❌ Оригинал:', item.poster);
-                    });
-                } else {
-                    console.warn('[Rezka] ⚠️ IMG элемент не найден в карточке');
-                }
+                
+                card.append(cardView);
 
                 // ========================================
                 // КЛИК НА КАРТОЧКУ
                 // ========================================
-                function handleClick() {
+                function handleClick(e) {
+                    e.preventDefault();
                     console.log('[Rezka] 🎯 Клик на:', titleClean);
                     Lampa.Loading.start(function() {});
 
-                    // Ищем в TMDB
                     searchTMDB(titleClean, year, mediaType, function(results) {
                         Lampa.Loading.stop();
 
@@ -293,7 +296,6 @@
                             return;
                         }
 
-                        // Проверяем точное совпадение по году
                         var exactMatch = null;
                         if (year) {
                             exactMatch = results.find(function(r) {
@@ -309,7 +311,7 @@
                             console.log('[Rezka] ✅ Один результат:', results[0].id);
                             openLampaCard(results[0].id, mediaType);
                         } else {
-                            console.log('[Rezka] 📋 Показываем список из', results.length, 'вариантов');
+                            console.log('[Rezka] 📋 Показываем список');
                             showSelectionModal(results, mediaType, function(selected) {
                                 openLampaCard(selected.id, mediaType);
                             });
