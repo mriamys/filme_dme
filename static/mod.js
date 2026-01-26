@@ -60,10 +60,21 @@
                 let cleanTitle = title.split(' / ')[0].split(':')[0].trim();
 
                 const isTv = /\/series\/|\/cartoons\//.test(item.url || '');
+                
+                // Извлекаем ID из URL (например, /series/fantastic-and-where-to-find-them/42009-black-mirror.html -> 42009)
+                let tmdbId = null;
+                const urlMatch = (item.url || '').match(/\/(\d+)-[^/]+\.html/);
+                if (urlMatch) {
+                    tmdbId = urlMatch[1];
+                }
 
-                // Сначала пробуем прямой постер, при ошибке — через прокси
+                // ВСЕГДА используем прокси для постеров (обходим проблему CORS)
                 let imgUrl = item.poster || '';
-                if (!imgUrl.startsWith('http')) imgUrl = 'https://via.placeholder.com/300x450?text=No+image';
+                if (imgUrl && imgUrl.startsWith('http')) {
+                    imgUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(imgUrl);
+                } else {
+                    imgUrl = 'https://via.placeholder.com/300x450?text=No+image';
+                }
 
                 var card = Lampa.Template.get('card', {
                     title: item.title,
@@ -75,20 +86,36 @@
                 card.addClass('card--collection');
                 card.css({ width: '16.6%', minWidth: '140px' });
 
-                // Если прямой постер не загрузился — пробуем прокси
-                card.find('img').on('error', function () {
-                    const proxyUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(item.poster);
-                    $(this).attr('src', proxyUrl);
-                });
-
-                // Открытие
+                // Открытие карточки фильма
                 function openItem() {
-                    Lampa.Activity.push({
-                        component: 'search',
-                        query: cleanTitle + (year ? ' ' + year : ''),
-                        year: year,
-                        type: isTv ? 'tv' : 'movie'
-                    });
+                    if (tmdbId) {
+                        // Переход на карточку фильма/сериала
+                        Lampa.Activity.push({
+                            url: '',
+                            component: 'full',
+                            id: tmdbId,
+                            method: isTv ? 'tv' : 'movie',
+                            card: {
+                                id: tmdbId,
+                                title: cleanTitle,
+                                original_title: cleanTitle,
+                                release_date: year,
+                                first_air_date: year,
+                                poster_path: item.poster,
+                                overview: '',
+                                vote_average: 0
+                            },
+                            source: 'tmdb'
+                        });
+                    } else {
+                        // Fallback - поиск по названию
+                        Lampa.Activity.push({
+                            component: 'search',
+                            query: cleanTitle + (year ? ' ' + year : ''),
+                            year: year,
+                            type: isTv ? 'tv' : 'movie'
+                        });
+                    }
                 }
 
                 card.on('hover:enter', openItem);
