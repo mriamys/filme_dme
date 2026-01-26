@@ -6,6 +6,9 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+# --- ДОБАВЛЕН ИМПОРТ ---
+from fastapi.middleware.cors import CORSMiddleware
+# -----------------------
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -70,6 +73,16 @@ async def lifespan(app: FastAPI):
     print("✅ Сервер остановлен.")
 
 app = FastAPI(lifespan=lifespan)
+
+# --- ДОБАВЛЕН БЛОК CORS (РАЗРЕШЕНИЕ ДЛЯ LAMPA) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Разрешаем запросы с любых сайтов (Lampa, localhost и т.д.)
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем любые методы (GET, POST и т.д.)
+    allow_headers=["*"],  # Разрешаем любые заголовки
+)
+# -------------------------------------------------
 
 class AddRequest(BaseModel):
     post_id: str
