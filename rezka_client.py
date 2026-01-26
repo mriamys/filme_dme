@@ -2,6 +2,7 @@ import os
 import re
 import time
 from typing import Dict, List, Optional, Any
+from urllib.parse import urlparse, urljoin
 
 from curl_cffi import requests as curl_requests  # type: ignore
 from bs4 import BeautifulSoup
@@ -17,14 +18,20 @@ class RezkaClient:
     и изменением статуса эпизодов.
     """
 
-    def __init__(self):
+    def __init__(self, base_url: Optional[str] = None) -> None:
+        """
+        Создаёт сессию для работы с HDRezka. Принимает необязательный base_url,
+        который используется в качестве основного домена. Если base_url не
+        указан, будет взят из переменной окружения REZKA_DOMAIN или
+        по умолчанию "https://hdrezka.me".
+        """
         # Инициализируем curl session с маскировкой Chrome
         self.session = curl_requests.Session(impersonate="chrome110")
         self.login = os.getenv("REZKA_LOGIN")
         self.password = os.getenv("REZKA_PASS")
         self.is_logged_in = False
-        # Основной домен для запросов
-        self.origin = "https://hdrezka.me"
+        # Основной домен для запросов. Берём из аргумента либо переменной окружения.
+        self.origin: str = base_url or os.getenv("REZKA_DOMAIN", "https://hdrezka.me")
 
     def auth(self) -> bool:
         """Авторизация на HDRezka. Возвращает True при успехе."""
@@ -190,6 +197,13 @@ class RezkaClient:
             return {"error": "Auth failed"}
         try:
             r = self.session.get(url)
+            # Если страница ведёт на другой домен (например, .sh), обновляем origin
+            try:
+                parsed = urlparse(url)
+                if parsed.scheme and parsed.netloc:
+                    self.origin = f"{parsed.scheme}://{parsed.netloc}"
+            except Exception:
+                pass
             html_text = r.text
             soup = BeautifulSoup(html_text, "html.parser")
             # Постер
@@ -221,9 +235,7 @@ class RezkaClient:
                         translator_id = active.get("data-translator_id")
                 # ID сезонов
                 season_ids = re.findall(r'data-tab_id=["\'](\d+)["\']', html_text)
-                season_ids = sorted(
-                    list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0
-                )
+                season_ids = sorted(list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0)
                 season_ids = [s for s in season_ids if s.isdigit() and int(s) < 200]
                 if season_ids:
                     for season_id in season_ids:
@@ -289,23 +301,48 @@ class RezkaClient:
                                 found = True
                                 if t_ep["watched"]:
                                     p_ep["watched"] = True
-                                if not p_ep["global_id"]:
+                                if not p_ep.get("global_id"):
                                     p_ep["global_id"] = t_ep["global_id"]
                                 break
                         if not found:
                             final_seasons_dict[s_id].append(t_ep)
             # Сортируем
             sorted_seasons: Dict[str, List[Dict[str, Any]]] = {}
-            sorted_keys = sorted(
-                final_seasons_dict.keys(), key=lambda x: int(x) if x.isdigit() else 999
-            )
+            sorted_keys = sorted(final_seasons_dict.keys(), key=lambda x: int(x) if x.isdigit() else 999)
             for s in sorted_keys:
                 eps = final_seasons_dict[s]
                 eps.sort(key=lambda x: int(x["episode"]) if x["episode"].isdigit() else 999)
                 sorted_seasons[s] = eps
+            # Пытаемся найти ссылку на страницу франшизы/серии, если она есть
+            franchise_url: Optional[str] = None
+            try:
+                link_fr = soup.find("a", href=re.compile(r"/franchises/"))
+                if link_fr and link_fr.get("href"):
+                    franchise_url = urljoin(self.origin, link_fr.get("href"))
+                else:
+                    heading = soup.find(
+                        lambda tag: tag.name in ["h2", "h3", "div"]
+                        and tag.get_text().strip().lower().startswith("все проекты")
+                    )
+                    if heading:
+                        next_link = heading.find_next("a", href=True)
+                        if next_link:
+                            franchise_url = urljoin(self.origin, next_link.get("href"))
+            except Exception:
+                franchise_url = None
             if sorted_seasons:
-                return {"seasons": sorted_seasons, "poster": hq_poster, "post_id": post_id}
-            return {"error": "Нет серий", "poster": hq_poster, "post_id": post_id}
+                return {
+                    "seasons": sorted_seasons,
+                    "poster": hq_poster,
+                    "post_id": post_id,
+                    "franchise_url": franchise_url,
+                }
+            return {
+                "error": "Нет серий",
+                "poster": hq_poster,
+                "post_id": post_id,
+                "franchise_url": franchise_url,
+            }
         except Exception as e:
             return {"error": str(e)}
 
@@ -384,10 +421,10 @@ class RezkaClient:
             return []
         for page in range(1, max_pages + 1):
             try:
-                url = f"{self.origin}/favorites/{cat_id}/"
+                url_page = f"{self.origin}/favorites/{cat_id}/"
                 if page > 1:
-                    url = f"{url}page/{page}/"
-                r = self.session.get(url)
+                    url_page = f"{url_page}page/{page}/"
+                r = self.session.get(url_page)
                 soup = BeautifulSoup(r.text, "html.parser")
                 items_page: List[Dict[str, Any]] = []
                 for item in soup.find_all(class_="b-content__inline_item"):
@@ -487,6 +524,5 @@ class RezkaClient:
         except Exception:
             pass
         return items
-
 
 __all__ = ["RezkaClient"]

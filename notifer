@@ -98,14 +98,14 @@ def check_for_updates(
                 last_s, last_e = last_episode
                 if max_season < last_s or (max_season == last_s and max_episode <= last_e):
                     continue
-            msg = f"📺 Вышла новая серия: {title} — сезон {max_season}, серия {max_episode}"
+            msg = f"Вышла новая серия: {title} — сезон {max_season}, серия {max_episode}"
             try:
                 requests.post(
                     f"https://api.telegram.org/bot{bot_token}/sendMessage",
                     data={"chat_id": chat_id, "text": msg},
                     timeout=5,
                 )
-                print(f"🔔 Оповещение отправлено: {msg}")
+                print(f"Оповещение отправлено: {msg}")
             except Exception:
                 print("❌ Не удалось отправить уведомление в Telegram")
         except Exception:

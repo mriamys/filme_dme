@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rezka App</title>
+    <!-- Telegram Web App API -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="static/style.css">
 </head>
@@ -26,14 +27,16 @@
             <img id="det-img" src="">
             <div class="hero-title" id="det-title"></div>
         </div>
-        
+
         <div id="det-controls" class="manage-box" style="display:none;">
             <button class="btn-action btn-watch" onclick="moveMovie('watching')">В Смотрю</button>
             <button class="btn-action btn-later" onclick="moveMovie('later')">В Позже</button>
             <button class="btn-action btn-done" onclick="moveMovie('watched')">В Архив</button>
+            <button class="btn-action btn-delete" onclick="deleteMovie()">Удалить</button>
         </div>
 
         <div id="det-list" class="episodes-list"></div>
+        <div id="franchise-list" class="franchise-list"></div>
     </div>
 
     <div class="tab-bar">
@@ -41,13 +44,13 @@
             <span class="tab-icon">▶</span>Смотрю
         </button>
         <button class="tab-btn" onclick="switchTab('later', this)">
-            <span class="tab-icon">🕒</span>Позже
+            <span class="tab-icon"></span>Позже
         </button>
         <button class="tab-btn" onclick="switchTab('watched', this)">
             <span class="tab-icon">✅</span>Архив
         </button>
         <button class="tab-btn" onclick="openSearch(this)">
-            <span class="tab-icon">🔍</span>Поиск
+            <span class="tab-icon"></span>Поиск
         </button>
     </div>
 
