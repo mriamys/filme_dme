@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: #fff;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-box {
+            background: #222;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #ff0; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #111;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Тест подключения к API</h1>
+    
+    <div class="test-box">
+        <h2>Информация о системе</h2>
+        <p>User Agent: <span id="userAgent"></span></p>
+        <p>URL: <span id="currentUrl"></span></p>
+    </div>
+
+    <div class="test-box">
+        <h2>1. Проверка доступности API</h2>
+        <button onclick="testAPI()">Тест /api/watching</button>
+        <div id="apiResult"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>2. Проверка TMDB API</h2>
+        <button onclick="testTMDB()">Тест TMDB</button>
+        <div id="tmdbResult"></div>
+    </div>
+
+    <div class="test-box">
+        <h2>3. Консоль логов</h2>
+        <pre id="console"></pre>
+    </div>
+
+    <script>
+        var MY_API_URL = 'http://filme.64.188.67.85.sslip.io:8080';
+        var TMDB_API_KEY = '4ef0d7355d9ffb5151e987764708ce96';
+        var consoleLog = document.getElementById('console');
+
+        function log(msg, type) {
+            type = type || 'info';
+            var time = new Date().toLocaleTimeString();
+            var color = type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info');
+            consoleLog.innerHTML += '<span class="' + color + '">[' + time + '] ' + msg + '</span>\n';
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+            console.log(msg);
+        }
+
+        // Информация о системе
+        document.getElementById('userAgent').textContent = navigator.userAgent;
+        document.getElementById('currentUrl').textContent = window.location.href;
+        log('Страница загружена');
+
+        function testAPI() {
+            log('Запрос к: ' + MY_API_URL + '/api/watching');
+            var resultDiv = document.getElementById('apiResult');
+            resultDiv.innerHTML = '<p class="info">⏳ Загрузка...</p>';
+
+            var xhr = new XMLHttpRequest();
+            xhr.timeout = 10000;
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        log('✅ API ответил успешно: ' + data.length + ' элементов', 'success');
+                        resultDiv.innerHTML = '<p class="success">✅ Успех! Получено ' + data.length + ' элементов</p><pre>' + JSON.stringify(data.slice(0, 2), null, 2) + '</pre>';
+                    } catch (e) {
+                        log('❌ Ошибка парсинга JSON: ' + e.message, 'error');
+                        resultDiv.innerHTML = '<p class="error">❌ Ошибка парсинга: ' + e.message + '</p>';
+                    }
+                } else {
+                    log('❌ HTTP ошибка: ' + xhr.status, 'error');
+                    resultDiv.innerHTML = '<p class="error">❌ HTTP ' + xhr.status + '</p>';
+                }
+            };
+
+            xhr.onerror = function() {
+                log('❌ Сетевая ошибка (CORS/Network)', 'error');
+                resultDiv.innerHTML = '<p class="error">❌ Ошибка сети. Возможно CORS или сервер недоступен</p>';
+            };
+
+            xhr.ontimeout = function() {
+                log('❌ Timeout', 'error');
+                resultDiv.innerHTML = '<p class="error">❌ Превышено время ожидания</p>';
+            };
+
+            xhr.open('GET', MY_API_URL + '/api/watching', true);
+            xhr.send();
+        }
+
+        function testTMDB() {
+            log('Запрос к TMDB API');
+            var resultDiv = document.getElementById('tmdbResult');
+            resultDiv.innerHTML = '<p class="info">⏳ Загрузка...</p>';
+
+            var url = 'https://api.themoviedb.org/3/search/tv?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=Breaking Bad';
+
+            var xhr = new XMLHttpRequest();
+            xhr.timeout = 10000;
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        log('✅ TMDB ответил: ' + data.results.length + ' результатов', 'success');
+                        resultDiv.innerHTML = '<p class="success">✅ TMDB работает! Найдено ' + data.results.length + ' результатов</p>';
+                    } catch (e) {
+                        log('❌ Ошибка TMDB: ' + e.message, 'error');
+                        resultDiv.innerHTML = '<p class="error">❌ Ошибка: ' + e.message + '</p>';
+                    }
+                } else {
+                    log('❌ TMDB HTTP ошибка: ' + xhr.status, 'error');
+                    resultDiv.innerHTML = '<p class="error">❌ HTTP ' + xhr.status + '</p>';
+                }
+            };
+
+            xhr.onerror = function() {
+                log('❌ TMDB сетевая ошибка', 'error');
+                resultDiv.innerHTML = '<p class="error">❌ Ошибка подключения к TMDB</p>';
+            };
+
+            xhr.open('GET', url, true);
+            xhr.send();
+        }
+
+        // Автоматический тест при загрузке
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                log('Автоматический тест API...');
+                testAPI();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

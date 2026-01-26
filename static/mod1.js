@@ -4,20 +4,29 @@
     var MY_API_URL = 'http://filme.64.188.67.85.sslip.io:8080';
     var TMDB_API_KEY = '4ef0d7355d9ffb5151e987764708ce96';
 
+    console.log('[Rezka] 🚀 Инициализация плагина...');
+
     function MyRezkaComponent(object) {
+        console.log('[Rezka] 📦 Создание компонента');
+        
         var comp = {};
         comp.html = $('<div class="items items--lines"></div>');
         var isModalOpen = false;
 
         comp.create = function () {
-            var loader = $('<div class="empty__descr">Загрузка...</div>');
+            console.log('[Rezka] 🎨 Создание HTML');
+            var loader = $('<div class="empty__descr">Загрузка данных...</div>');
             comp.html.append(loader);
 
+            console.log('[Rezka] 📡 Запрос к API:', MY_API_URL + '/api/watching');
+            
             $.ajax({
                 url: MY_API_URL + '/api/watching',
                 method: 'GET',
                 dataType: 'json',
+                timeout: 10000,
                 success: function(items) {
+                    console.log('[Rezka] ✅ Данные получены:', items ? items.length : 0, 'элементов');
                     loader.remove();
                     if (items && items.length) {
                         comp.renderItems(items);
@@ -26,23 +35,32 @@
                     }
                     Lampa.Controller.toggle('content');
                 },
-                error: function(err) {
-                    loader.text('Ошибка связи с сервером');
-                    console.error('[Rezka] Ошибка загрузки:', err);
+                error: function(xhr, status, err) {
+                    console.error('[Rezka] ❌ Ошибка загрузки:', status, err);
+                    console.error('[Rezka] ❌ XHR:', xhr);
+                    loader.text('Ошибка связи: ' + status);
                 }
             });
             return comp.html;
         };
 
         comp.start = function () {
+            console.log('[Rezka] ▶️ Start вызван');
             Lampa.Controller.toggle('content');
         };
-        comp.pause = function () {};
+        
+        comp.pause = function () {
+            console.log('[Rezka] ⏸️ Pause вызван');
+        };
+        
         comp.destroy = function () {
+            console.log('[Rezka] 🗑️ Destroy вызван');
             isModalOpen = false;
             comp.html.remove();
         };
+        
         comp.render = function () {
+            console.log('[Rezka] 🖼️ Render вызван');
             return comp.html;
         };
 
@@ -63,12 +81,12 @@
                 return;
             }
             
-            console.log('[Rezka] Поиск по:', toSearch, 'год:', year);
+            console.log('[Rezka] 🔍 Поиск по:', toSearch, 'год:', year);
             
             function checkComplete() {
                 completed++;
                 if (completed === toSearch.length) {
-                    console.log('[Rezka] Всего найдено уникальных:', allResults.length);
+                    console.log('[Rezka] ✅ Всего найдено:', allResults.length);
                     callback(allResults);
                 }
             }
@@ -112,12 +130,12 @@
         // ========================================
         function showSelectionModal(results, mediaType, onSelect) {
             if (isModalOpen) {
-                console.log('[Rezka] Модалка уже открыта');
+                console.log('[Rezka] ⚠️ Модалка уже открыта');
                 return;
             }
             
             isModalOpen = true;
-            console.log('[Rezka] Открываем модалку');
+            console.log('[Rezka] 📋 Открываем модалку');
 
             var items = [];
             for (var i = 0; i < results.length; i++) {
@@ -142,12 +160,12 @@
                 title: 'Выберите правильный вариант',
                 items: items,
                 onSelect: function(selectedItem) {
-                    console.log('[Rezka] Выбрано:', selectedItem.title);
+                    console.log('[Rezka] ✅ Выбрано:', selectedItem.title);
                     isModalOpen = false;
                     onSelect(selectedItem.tmdb_data);
                 },
                 onBack: function() {
-                    console.log('[Rezka] Назад');
+                    console.log('[Rezka] 🔙 Назад');
                     isModalOpen = false;
                 }
             });
@@ -157,10 +175,10 @@
         // Открытие карточки
         // ========================================
         function openLampaCard(tmdbId, mediaType) {
-            console.log('[Rezka] Открываем:', tmdbId, mediaType);
+            console.log('[Rezka] 🎬 Открываем карточку:', tmdbId, mediaType);
             
             Lampa.Activity.push({
-                url: 'http://lampa.mx/?card=' + tmdbId + '&media=' + mediaType + '&source=tmdb',
+                url: '',
                 component: 'full',
                 id: tmdbId,
                 method: mediaType,
@@ -176,6 +194,8 @@
         // Рендер карточек
         // ========================================
         comp.renderItems = function (items) {
+            console.log('[Rezka] 🎨 Рендер', items.length, 'карточек');
+            
             var grid = $('<div class="rezka-grid"></div>');
             grid.css({
                 display: 'grid',
@@ -199,8 +219,6 @@
                     var titleEn = parts[1] ? parts[1].trim() : '';
                     
                     var titleRuClean = titleRu.split(':')[0].trim();
-
-                    console.log('[Rezka] RU:', titleRu, '| EN:', titleEn);
 
                     var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                     var mediaType = isTv ? 'tv' : 'movie';
@@ -306,6 +324,8 @@
                     });
 
                     function handleClick(e) {
+                        console.log('[Rezka] 🖱️ Клик на:', titleRu);
+                        
                         if (e) e.preventDefault();
                         
                         if (longPressTimer) {
@@ -314,14 +334,13 @@
                         }
                         
                         if (isModalOpen) {
-                            console.log('[Rezka] Модалка уже открыта');
+                            console.log('[Rezka] ⚠️ Модалка уже открыта');
                             return;
                         }
                         
                         var forceSelect = isLongPress;
                         isLongPress = false;
                         
-                        console.log('[Rezka] Клик:', titleRu, forceSelect ? '(принудительно)' : '');
                         Lampa.Loading.start(function() {});
 
                         searchTMDBBoth(titleRuClean, titleEn, year, mediaType, function(results) {
@@ -333,7 +352,6 @@
                             }
 
                             if (forceSelect) {
-                                console.log('[Rezka] Принудительный выбор');
                                 showSelectionModal(results, mediaType, function(selected) {
                                     openLampaCard(selected.id, mediaType);
                                 });
@@ -353,13 +371,10 @@
                             }
 
                             if (exactMatch) {
-                                console.log('[Rezka] Совпадение по году:', exactMatch.id);
                                 openLampaCard(exactMatch.id, mediaType);
                             } else if (results.length === 1) {
-                                console.log('[Rezka] Один результат');
                                 openLampaCard(results[0].id, mediaType);
                             } else {
-                                console.log('[Rezka] Несколько вариантов');
                                 showSelectionModal(results, mediaType, function(selected) {
                                     openLampaCard(selected.id, mediaType);
                                 });
@@ -385,26 +400,61 @@
     // ========================================
     Lampa.Listener.follow('app', function (e) {
         if (e.type === 'ready') {
-            console.log('[Rezka] Плагин загружен');
+            console.log('[Rezka] ✅ App ready - регистрация компонента');
             
+            // Регистрируем компонент
+            Lampa.Component.add('my_rezka', MyRezkaComponent);
+            console.log('[Rezka] ✅ Компонент зарегистрирован');
+            
+            // Проверяем существование пункта меню
             if ($('[data-action="my_rezka_open"]').length === 0) {
+                console.log('[Rezka] 📝 Добавляем пункт меню');
                 $('.menu .menu__list').eq(0).append(
                     '<li class="menu__item selector" data-action="my_rezka_open">' +
                     '<div class="menu__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7L12 12L22 7L12 2Z"/><path d="M2 17L12 22L22 17"/><path d="M2 12L12 17L22 12"/></svg></div>' +
                     '<div class="menu__text">Rezka</div></li>'
                 );
+            } else {
+                console.log('[Rezka] ⚠️ Пункт меню уже существует');
             }
             
-            $('body').off('click.myrezka').on('click.myrezka', '[data-action="my_rezka_open"]', function () {
-                Lampa.Activity.push({ 
-                    component: 'my_rezka', 
-                    page: 1 
-                });
+            // Обработчик клика - несколько вариантов
+            $('body').off('click.myrezka').on('click.myrezka', '[data-action="my_rezka_open"]', function (event) {
+                console.log('[Rezka] 🎯 Клик на пункт меню!');
+                event.preventDefault();
+                event.stopPropagation();
+                
+                try {
+                    Lampa.Activity.push({ 
+                        component: 'my_rezka', 
+                        page: 1 
+                    });
+                    console.log('[Rezka] ✅ Activity.push выполнен');
+                } catch (err) {
+                    console.error('[Rezka] ❌ Ошибка при открытии:', err);
+                }
             });
             
-            Lampa.Component.add('my_rezka', MyRezkaComponent);
+            // Альтернативный обработчик для hover:enter (для ТВ пультов)
+            $('body').off('hover:enter.myrezka').on('hover:enter.myrezka', '[data-action="my_rezka_open"]', function (event) {
+                console.log('[Rezka] 🎯 hover:enter на пункт меню!');
+                event.preventDefault();
+                event.stopPropagation();
+                
+                try {
+                    Lampa.Activity.push({ 
+                        component: 'my_rezka', 
+                        page: 1 
+                    });
+                    console.log('[Rezka] ✅ Activity.push выполнен');
+                } catch (err) {
+                    console.error('[Rezka] ❌ Ошибка при открытии:', err);
+                }
+            });
             
-            console.log('[Rezka] Готово');
+            console.log('[Rezka] 📌 Инициализация завершена!');
         }
     });
+    
+    console.log('[Rezka] 📦 Плагин загружен в память');
 })();
