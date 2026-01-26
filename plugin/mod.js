@@ -53,13 +53,11 @@
         comp.build = function(items) {
             console.log('[Rezka] Building', items.length, 'cards');
             
-            // Создаем скролл
             scroll = new Lampa.Scroll({
                 horizontal: false,
                 step: 250
             });
             
-            // Grid контейнер
             var grid = $('<div class="rezka-grid"></div>');
             grid.css({
                 'display': 'grid',
@@ -92,7 +90,6 @@
             var mediaType = isTv ? 'tv' : 'movie';
             var posterUrl = item.poster ? MY_API_URL + '/api/img?url=' + encodeURIComponent(item.poster) : '';
             
-            // Карточка
             var card = $('<div class="rezka-card selector"></div>');
             card.css({
                 'position': 'relative',
@@ -103,7 +100,6 @@
                 'background-color': '#1a1a1a'
             });
             
-            // Постер
             var poster = $('<div></div>');
             poster.css({
                 'width': '100%',
@@ -115,7 +111,6 @@
                 'background-position': 'center'
             });
             
-            // Статус
             if (item.status) {
                 var badge = $('<div></div>').text(item.status);
                 badge.css({
@@ -134,7 +129,6 @@
             
             card.append(poster);
             
-            // Название
             var title = $('<div></div>').text(titleRu);
             title.css({
                 'padding': '10px',
@@ -148,18 +142,22 @@
             });
             card.append(title);
             
-            // Данные
             card.data('item', item);
+            card.data('title_ru', titleRuClean);
+            card.data('title_en', titleEn);
+            card.data('year', year);
+            card.data('media_type', mediaType);
             
-            // Focus
             card.on('hover:focus', function() {
                 $('.rezka-card').css({
                     'transform': 'scale(1)',
-                    'box-shadow': 'none'
+                    'box-shadow': 'none',
+                    'z-index': '1'
                 });
                 card.css({
                     'transform': 'scale(1.05)',
-                    'box-shadow': '0 8px 20px rgba(255,255,255,0.3)'
+                    'box-shadow': '0 8px 20px rgba(255,255,255,0.3)',
+                    'z-index': '10'
                 });
                 last_item = item;
             });
@@ -167,52 +165,145 @@
             card.on('hover:blur', function() {
                 card.css({
                     'transform': 'scale(1)',
-                    'box-shadow': 'none'
+                    'box-shadow': 'none',
+                    'z-index': '1'
                 });
             });
             
-            // Клик
             card.on('hover:enter', function(e) {
                 if (e) e.preventDefault();
                 if (isModalOpen) return;
-                comp.open(titleRuClean, titleEn, year, mediaType);
+                comp.search(titleRuClean, titleEn, year, mediaType);
             });
             
             return card;
         };
         
-        comp.open = function(titleRu, titleEn, year, mediaType) {
+        // Поиск по двум названиям
+        comp.search = function(titleRu, titleEn, year, mediaType) {
             Lampa.Loading.start(function() {});
             
-            var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
-                     '?api_key=' + TMDB_API_KEY + 
-                     '&language=ru-RU&query=' + encodeURIComponent(titleRu);
+            var allResults = [];
+            var seenIds = {};
+            var completed = 0;
+            var toSearch = [];
             
-            if (year) url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+            if (titleEn) toSearch.push(titleEn);
+            if (titleRu) toSearch.push(titleRu);
             
-            $.ajax({
-                url: url,
-                timeout: 10000,
-                success: function(data) {
+            if (toSearch.length === 0) {
+                Lampa.Loading.stop();
+                Lampa.Noty.show('Ошибка поиска');
+                return;
+            }
+            
+            function checkComplete() {
+                completed++;
+                if (completed === toSearch.length) {
                     Lampa.Loading.stop();
-                    if (data.results && data.results.length > 0) {
-                        var id = data.results[0].id;
-                        Lampa.Activity.push({
-                            url: '',
-                            component: 'full',
-                            id: id,
-                            method: mediaType,
-                            source: 'tmdb',
-                            card: { id: id, source: 'tmdb' }
-                        });
-                    } else {
+                    
+                    if (allResults.length === 0) {
                         Lampa.Noty.show('Не найдено');
+                        return;
                     }
-                },
-                error: function() {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show('Ошибка поиска');
+                    
+                    // Ищем точное совпадение по году
+                    var exactMatch = null;
+                    if (year) {
+                        for (var i = 0; i < allResults.length; i++) {
+                            var r = allResults[i];
+                            var rYear = (r.release_date || r.first_air_date || '').substring(0, 4);
+                            if (rYear === year) {
+                                exactMatch = r;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (exactMatch) {
+                        // Точное совпадение - открываем сразу
+                        comp.openCard(exactMatch.id, mediaType);
+                    } else if (allResults.length === 1) {
+                        // Один результат - открываем
+                        comp.openCard(allResults[0].id, mediaType);
+                    } else {
+                        // Несколько вариантов - показываем выбор
+                        comp.showSelection(allResults, mediaType);
+                    }
                 }
+            }
+            
+            toSearch.forEach(function(searchTitle) {
+                var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
+                          '?api_key=' + TMDB_API_KEY + 
+                          '&language=ru-RU&query=' + encodeURIComponent(searchTitle);
+                
+                if (year) {
+                    url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+                }
+                
+                $.ajax({
+                    url: url,
+                    timeout: 10000,
+                    success: function(data) {
+                        if (data.results) {
+                            data.results.forEach(function(item) {
+                                if (!seenIds[item.id]) {
+                                    seenIds[item.id] = true;
+                                    allResults.push(item);
+                                }
+                            });
+                        }
+                        checkComplete();
+                    },
+                    error: function() {
+                        checkComplete();
+                    }
+                });
+            });
+        };
+        
+        // Показать выбор из TMDB
+        comp.showSelection = function(results, mediaType) {
+            if (isModalOpen) return;
+            isModalOpen = true;
+            
+            var items = [];
+            results.forEach(function(item) {
+                var title = item.title || item.name;
+                var year = (item.release_date || item.first_air_date || '').substring(0, 4);
+                var poster = item.poster_path ? 'https://image.tmdb.org/t/p/w200' + item.poster_path : '';
+                var overview = (item.overview || 'Нет описания').substring(0, 150);
+                
+                items.push({
+                    title: title + ' (' + year + ')',
+                    description: overview,
+                    image: poster,
+                    tmdb_id: item.id
+                });
+            });
+            
+            Lampa.Select.show({
+                title: 'Выберите вариант',
+                items: items,
+                onSelect: function(selectedItem) {
+                    isModalOpen = false;
+                    comp.openCard(selectedItem.tmdb_id, mediaType);
+                },
+                onBack: function() {
+                    isModalOpen = false;
+                }
+            });
+        };
+        
+        comp.openCard = function(tmdbId, mediaType) {
+            Lampa.Activity.push({
+                url: '',
+                component: 'full',
+                id: tmdbId,
+                method: mediaType,
+                source: 'tmdb',
+                card: { id: tmdbId, source: 'tmdb' }
             });
         };
         
@@ -412,18 +503,21 @@
             Lampa.Controller.add('content', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
-                    Lampa.Controller.collectionFocus(false, comp.html);
+                    Lampa.Controller.collectionFocus(last_item, comp.html);
                 },
                 back: function() {
                     Lampa.Activity.backward();
                 }
             });
             
-            // Красная кнопка
-            $(document).off('keydown.rezka').on('keydown.rezka', function(e) {
-                if (e.keyCode === 403 && last_item && !isModalOpen) {
-                    e.preventDefault();
-                    comp.menu(last_item);
+            // Красная кнопка - код 403
+            $('body').off('keydown.rezka').on('keydown.rezka', function(e) {
+                if (Lampa.Controller.enabled().name === 'content') {
+                    if (e.keyCode === 403 && last_item && !isModalOpen) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        comp.menu(last_item);
+                    }
                 }
             });
             
@@ -432,14 +526,14 @@
         
         comp.pause = function() {
             Lampa.Controller.clear();
-            $(document).off('keydown.rezka');
+            $('body').off('keydown.rezka');
         };
         
         comp.stop = function() {};
         
         comp.destroy = function() {
             Lampa.Controller.clear();
-            $(document).off('keydown.rezka');
+            $('body').off('keydown.rezka');
             if (scroll) scroll.destroy();
             comp.html.remove();
         };
