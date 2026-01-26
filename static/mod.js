@@ -47,17 +47,18 @@
         };
 
         // ========================================
-        // TMDB API - Поиск
+        // TMDB API
         // ========================================
-        function searchTMDB(titleRu, titleEn, year, mediaType, callback) {
-            // Пробуем сначала английское название (точнее)
-            var searchTitle = titleEn || titleRu;
-            
+        function searchTMDB(searchTitle, year, mediaType, callback) {
             var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
                       '?api_key=' + TMDB_API_KEY + 
                       '&language=ru-RU&query=' + encodeURIComponent(searchTitle);
             
-            console.log('[Rezka] 🔍 Поиск:', searchTitle, year);
+            if (year) {
+                url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+            }
+            
+            console.log('[Rezka] 🔍 Поиск:', searchTitle, 'год:', year);
             
             $.ajax({
                 url: url,
@@ -163,18 +164,14 @@
                 
                 // ✅ РУССКОЕ и АНГЛИЙСКОЕ название
                 var parts = titleNoYear.split('/');
-                var titleRu = parts[0].trim();      // "Доктор Кто: Раскрыто"
+                var titleRu = parts[0].trim();           // "Доктор Кто: Раскрыто"
                 var titleEn = parts[1] ? parts[1].trim() : ''; // "Doctor Who"
                 
-                // Для поиска убираем префикс из русского (если нет английского)
-                var titleRuClean = titleRu.split(':')[0].trim();
-                
-                // Для поиска английское (точнее) или русское
-                var titleForSearch = titleEn || titleRuClean;
+                // ✅ Приоритет для поиска: английское (точнее) или русское
+                var titleForSearch = titleEn || titleRu.split(':')[0].trim();
 
-                console.log('[Rezka] 📝 RU:', titleRu);
-                console.log('[Rezka] 📝 EN:', titleEn);
-                console.log('[Rezka] 🔍 Поиск:', titleForSearch);
+                console.log('[Rezka] 📝 Показываем:', titleRu);
+                console.log('[Rezka] 🔍 Ищем:', titleForSearch, 'год:', year);
 
                 const isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                 const mediaType = isTv ? 'tv' : 'movie';
@@ -275,7 +272,7 @@
                     console.log('[Rezka] 🎯 Клик:', titleRu);
                     Lampa.Loading.start(function() {});
 
-                    searchTMDB(titleRuClean, titleEn, year, mediaType, function(results) {
+                    searchTMDB(titleForSearch, year, mediaType, function(results) {
                         Lampa.Loading.stop();
 
                         if (!results.length) {
@@ -283,25 +280,26 @@
                             return;
                         }
 
-                        // ✅ СТРОГАЯ ПРОВЕРКА ПО ГОДУ
+                        // ✅ ЛОГИКА КАК РАНЬШЕ: год совпадает = открываем сразу
                         var exactMatch = null;
                         if (year) {
                             exactMatch = results.find(function(r) {
                                 var rYear = (r.release_date || r.first_air_date || '').substring(0, 4);
-                                var rTitle = (r.title || r.name || '').toLowerCase();
-                                var searchTitleLower = titleForSearch.toLowerCase();
-                                
-                                // Год совпадает И название похоже
-                                return rYear === year && rTitle.indexOf(searchTitleLower) !== -1;
+                                return rYear === year;
                             });
                         }
 
                         if (exactMatch) {
-                            console.log('[Rezka] ✅ Точное совпадение:', exactMatch.id);
+                            // Год совпадает → открываем сразу
+                            console.log('[Rezka] ✅ Совпадение по году:', exactMatch.id, year);
                             openLampaCard(exactMatch.id, mediaType);
+                        } else if (results.length === 1) {
+                            // Один результат → открываем
+                            console.log('[Rezka] ✅ Один результат:', results[0].id);
+                            openLampaCard(results[0].id, mediaType);
                         } else {
-                            // Если нет точного совпадения - показываем список
-                            console.log('[Rezka] 📋 Показываем список для выбора');
+                            // Несколько результатов → даем выбрать
+                            console.log('[Rezka] 📋 Несколько вариантов, показываем список');
                             showSelectionModal(results, mediaType, function(selected) {
                                 openLampaCard(selected.id, mediaType);
                             });
