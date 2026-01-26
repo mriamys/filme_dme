@@ -1,107 +1,91 @@
 (function () {
     'use strict';
-
-    // ВАЖНО: Прямой адрес сервера
+    // Прямой адрес сервера
     var MY_API_URL = 'http://64.188.67.85:8080';
-
     function MyRezkaComponent(object) {
-        // Создаем пустой объект вместо использования new Lampa.Component
-        var comp = {};
+        this.name = 'my_rezka';
+        this.genre_id = -1;
 
-        comp.create = function () {
-            // Создаем HTML-контейнер вручную
-            this.html = $('<div class="items items--vertical"></div>');
-            
-            // Включаем лоадер (this.activity появится автоматически)
-            if (this.activity) this.activity.loader(true);
-
-            Lampa.Noty.show('Rezka: Загрузка...');
-            
-            var _this = this;
+        this.create = function () {
+            this.activity.loader(true);
+            // УВЕДОМЛЕНИЕ 1: Сообщаем о начале попытки
+            Lampa.Noty.show('Rezka: Старт соединения...');
+            console.log('Rezka: Start request to ' + MY_API_URL);
             var url = MY_API_URL + '/api/watching';
-
+            // Используем fetch вместо Lampa.Network для детальной ошибки
             fetch(url)
-                .then(function (response) {
-                    if (!response.ok) throw new Error(response.status);
+                .then(function(response) {
+                    // Если сервер ответил, но с ошибкой (например, 404 или 500)
+                    if (!response.ok) {
+                        throw new Error('HTTP статус ' + response.status);
+                    }
                     return response.json();
                 })
-                .then(function (json) {
-                    if (_this.activity) _this.activity.loader(false);
-                    
+                .then(function(json) {
+                    this.activity.loader(false);
+                    // УВЕДОМЛЕНИЕ 2: Успех
+                    Lampa.Noty.show('Rezka: Успех! Фильмов: ' + (json ? json.length : 0));
                     if (json && json.length) {
-                        // Если есть фильмы — рендерим
-                        _this.render_list(json);
+                        var items = [];
+                        json.forEach(function(item){
+                            items.push({
+                                title: item.title,
+                                original_title: item.title,
+                                img: item.poster,
+                                query: item.title
+                            });
+                        });
+                        this.render_list(items);
                     } else {
-                        // Если пусто
-                        _this.html.append('<div class="empty__descr">Список пуст</div>');
+                        this.empty('Список пуст (вернулся пустой массив)');
                     }
-                })
-                .catch(function (error) {
-                    if (_this.activity) _this.activity.loader(false);
-                    // Выводим ошибку на экран
-                    _this.html.append('<div class="empty__descr" style="color:red">Ошибка: ' + error.message + '</div>');
-                    Lampa.Noty.show('Rezka Error: ' + error.message);
-                });
-
-            return this.html;
+                }.bind(this))
+                .catch(function(error) {
+                    this.activity.loader(false);
+                    // УВЕДОМЛЕНИЕ 3: Ошибка
+                    Lampa.Noty.show('Rezka Ошибка: ' + error.message);
+                    this.empty('Сбой: ' + error.message);
+                    console.error('Rezka Error:', error);
+                }.bind(this));
+            return this.render();
         };
-
-        comp.render_list = function (json) {
-            // Подготавливаем данные
-            var items = [];
-            json.forEach(function (item) {
-                items.push({
-                    title: item.title,
-                    original_title: item.title,
-                    img: item.poster,
-                    query: item.title
-                });
+        this.on_click = function (item) {
+            Lampa.Activity.push({
+                component: 'search',
+                query: item.query
             });
-
-            // Используем стандартный шаблон линии карточек
-            var line = Lampa.Template.get('items_line', { title: 'Смотрю' });
+        };
+        this.render_list = function (items) {
+            var line = Lampa.Template.get('items_line', { title: 'Моя Rezka' });
             var list = line.find('.card-layer');
-
             items.forEach(function (item) {
                 var card = Lampa.Template.get('card', item);
-                // Заглушка, если нет картинки
-                card.find('img').on('error', function () {
+                card.find('img').on('error', function(){
                     $(this).attr('src', './img/empty.jpg');
                 });
-                // Обработка клика
                 card.on('hover:enter', function () {
-                    Lampa.Activity.push({
-                        component: 'search',
-                        query: item.query
-                    });
-                });
+                    this.on_click(item);
+                }.bind(this));
                 list.append(card);
             });
-
-            // Добавляем линию в наш контейнер
-            this.html.append(line);
+            this.append(line);
         };
-
-        return comp;
+        return this;
     }
-
-    // Регистрация плагина
     Lampa.Listener.follow('app', function (e) {
         if (e.type == 'ready') {
             $('.menu .menu__list').eq(0).append(
                 '<li class="menu__item selector" data-action="my_rezka_open">' +
-                '<div class="menu__ico">R</div>' +
-                '<div class="menu__text">Rezka</div>' +
+                    '<div class="menu__ico">R</div>' +
+                    '<div class="menu__text">Rezka</div>' +
                 '</li>'
             );
-
             $('body').on('click', '[data-action="my_rezka_open"]', function () {
                 Lampa.Activity.push({
                     component: 'my_rezka',
                     type: 'list'
                 });
             });
-
             Lampa.Component.add('my_rezka', MyRezkaComponent);
         }
     });
