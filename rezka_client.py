@@ -373,10 +373,8 @@ class RezkaClient:
                     img = item.find(class_="b-content__inline_item-cover").find("img")
                     status = item.find(class_="info")
                     
-                    # ПАРСИНГ ГОДА
                     full_title = link.get_text(strip=True)
                     year = ""
-                    # Ищем год в скобках, например (2024)
                     match_year = re.search(r'\((\d{4})\)', full_title)
                     if match_year:
                         year = match_year.group(1)
@@ -388,7 +386,7 @@ class RezkaClient:
                             "url": link.get("href"),
                             "poster": img.get("src") if img else "",
                             "status": status.get_text(strip=True) if status else "",
-                            "year": year  # Добавляем поле года
+                            "year": year
                         }
                     )
                 except Exception:
@@ -410,12 +408,17 @@ class RezkaClient:
             return False
 
     def remove_favorite(self, post_id: str, cat_id: str) -> bool:
+        """
+        Удаляет фильм из категории.
+        ИСПРАВЛЕНИЕ: Используем 'add_post', так как на Rezka повторное добавление работает как удаление (toggle).
+        """
         if not self.auth():
             return False
         try:
+            # ТУТ ИЗМЕНЕНО: вместо del_post отправляем add_post
             r = self.session.post(
                 f"{self.origin}/ajax/favorites/",
-                data={"post_id": post_id, "cat_id": cat_id, "action": "del_post"},
+                data={"post_id": post_id, "cat_id": cat_id, "action": "add_post"},
             )
             try:
                 return bool(r.json().get("success", False))
@@ -446,7 +449,6 @@ class RezkaClient:
                         img = item.find(class_="b-content__inline_item-cover").find("img")
                         status = item.find(class_="info")
                         
-                        # ПАРСИНГ ГОДА
                         full_title = link.get_text(strip=True) if link else ""
                         year = ""
                         match_year = re.search(r'\((\d{4})\)', full_title)
@@ -460,7 +462,7 @@ class RezkaClient:
                                 "url": link.get("href") if link else "",
                                 "poster": img.get("src") if img else "",
                                 "status": status.get_text(strip=True) if status else "",
-                                "year": year # Добавляем поле года
+                                "year": year
                             }
                         )
                         seen_ids.add(item_id)
@@ -556,7 +558,6 @@ class RezkaClient:
                     title_span = li.find("span", class_="enty")
                     title = title_span.get_text(strip=True) if title_span else anchor.get_text(strip=True)
                     
-                    # ПАРСИНГ ГОДА В ПОИСКЕ
                     year = ""
                     match_year = re.search(r'\((\d{4})\)', title)
                     if match_year:
@@ -577,7 +578,7 @@ class RezkaClient:
                         "url": url,
                         "poster": poster,
                         "rating": rating,
-                        "year": year # Добавляем год
+                        "year": year 
                     })
                 except Exception:
                     continue
@@ -612,16 +613,14 @@ class RezkaClient:
                             a_tag = title_container.find("a")
                             title = a_tag.get_text(strip=True) if a_tag else title_container.get_text(strip=True)
                         
-                        # Парсинг года из франшизы
                         year_container = block.find("div", class_="td year")
                         if year_container:
                             info_text = year_container.get_text(strip=True)
                         
                         year = ""
                         if info_text and re.match(r'\d{4}', info_text):
-                            year = info_text.split()[0] # Берем первое слово, если это год
+                            year = info_text.split()[0]
                         else:
-                            # Пытаемся из тайтла
                             match_year = re.search(r'\((\d{4})\)', title)
                             if match_year: year = match_year.group(1)
 
