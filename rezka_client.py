@@ -508,30 +508,41 @@ class RezkaClient:
         if not self.auth():
             return False
         try:
+            # Собираем реферер: используем переданный или домен по умолчанию
             ref = referer or self.origin
+            # Базовые заголовки для Ajax запроса
             headers = {
                 "X-Requested-With": "XMLHttpRequest",
                 "Referer": ref,
                 "Origin": self.origin,
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin"
             }
+            # Добавляем Host, если можно извлечь
+            try:
+                host = urlparse(self.origin).netloc
+                if host:
+                    headers["Host"] = host
+            except Exception:
+                pass
+            # Отладочный вывод
             print(f"DEBUG: Отправка Toggle Watch ID={global_id}")
+            payload = {"id": global_id}
             r = self.session.post(
                 f"{self.origin}/engine/ajax/schedule_watched.php",
-                data={"id": global_id},
+                data=payload,
                 headers=headers,
             )
             print(f"DEBUG: Ответ сервера Toggle: Code={r.status_code}")
             print(f"DEBUG: Тело ответа: {r.text}")
             try:
                 data = r.json()
+                # API возвращает success или status==ok при успехе
                 return bool(data.get("success", False) or data.get("status") == "ok")
             except Exception:
+                # Если JSON не распарсился, считаем код 200 успешным
                 return r.status_code == 200
         except Exception as e:
+            # При любой ошибке просто логируем и возвращаем False
             print(f"ERROR: Ошибка Toggle Watch: {e}")
             return False
 
@@ -605,36 +616,76 @@ class RezkaClient:
         
         print(f"DEBUG: -> Запрос франшизы: {franchise_url}")
         try:
-            r = self.session.get(franchise_url)
+            # Отправляем Referer, чтобы HDRezka не обрезала контент
+            headers = {"Referer": self.origin}
+            r = self.session.get(franchise_url, headers=headers)
             print(f"DEBUG: <- Ответ франшизы: {r.status_code}")
             
-            if r.status_code != 200: return items
+            if r.status_code != 200: 
+                return items
 
             soup = BeautifulSoup(r.text, "html.parser")
+
+            # Попытка найти элементы новой верстки франшизы
+            blocks = soup.find_all("div", class_="b-post__partcontent_item")
+            if blocks:
+                print(f"DEBUG: Найдено элементов новой верстки франшизы: {len(blocks)}")
+                for block in blocks:
+                    try:
+                        # Ссылка хранится в атрибуте data-url
+                        url = block.get("data-url")
+                        if url:
+                            if url.startswith("/"):
+                                url = urljoin(self.origin, url)
+                        # Название и год
+                        title = ""
+                        info_text = ""
+                        rating = None
+                        title_container = block.find("div", class_="td title")
+                        if title_container:
+                            a_tag = title_container.find("a")
+                            title = a_tag.get_text(strip=True) if a_tag else title_container.get_text(strip=True)
+                        # Год или дополнительная информация
+                        year_container = block.find("div", class_="td year")
+                        if year_container:
+                            info_text = year_container.get_text(strip=True)
+                        # Рейтинг (может отсутствовать)
+                        rating_container = block.find("div", class_="td rating")
+                        if rating_container:
+                            rating = rating_container.get_text(strip=True)
+                        items.append({
+                            "id": None,
+                            "title": title,
+                            "url": url,
+                            "poster": "",
+                            "info": info_text,
+                            "rating": rating,
+                        })
+                    except Exception:
+                        continue
+                return items
+
+            # Старый формат элементов (fallback)
             blocks = soup.find_all(class_="b-content__inline_item")
-            
-            # Если пусто, попробуем поискать внутри контейнера списка (иногда верстка отличается)
             if not blocks:
                 container = soup.find(class_="b-content__inline_items")
                 if container:
                     blocks = container.find_all("div", recursive=False)
-
-            print(f"DEBUG: Найдено элементов франшизы: {len(blocks)}")
-            
+            print(f"DEBUG: Найдено элементов старой верстки франшизы: {len(blocks)}")
             for block in blocks:
                 try:
-                    link = block.find(class_="b-content__inline_item-link").find("a")
-                    if not link: continue
+                    link_wrap = block.find(class_="b-content__inline_item-link")
+                    link = link_wrap.find("a") if link_wrap else None
+                    if not link:
+                        continue
                     title = link.get_text(strip=True)
                     url = link.get("href")
                     item_id = block.get("data-id")
-                    
                     info = block.find(class_="misc")
                     misc_text = info.get_text(strip=True) if info else ""
-                    
-                    img = block.find(class_="b-content__inline_item-cover").find("img")
+                    img_wrap = block.find(class_="b-content__inline_item-cover")
+                    img = img_wrap.find("img") if img_wrap else None
                     poster = img.get("src") if img else ""
-
                     items.append({
                         "id": item_id,
                         "title": title,
@@ -642,7 +693,8 @@ class RezkaClient:
                         "poster": poster,
                         "info": misc_text,
                     })
-                except: continue
+                except Exception:
+                    continue
         except Exception as e:
             print(f"ERROR: Ошибка парсинга франшизы: {e}")
         return items
