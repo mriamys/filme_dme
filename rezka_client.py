@@ -20,17 +20,22 @@ class RezkaClient:
 
     def __init__(self, base_url: Optional[str] = None) -> None:
         """
-        Создаёт сессию для работы с HDRezka. Принимает необязательный base_url,
-        который используется в качестве основного домена. Если base_url не
-        указан, будет взят из переменной окружения REZKA_DOMAIN или
-        по умолчанию "https://hdrezka.me".
+        Создаёт сессию для работы с HDRezka. Принимает необязательный base_url.
         """
         # Инициализируем curl session с маскировкой Chrome
         self.session = curl_requests.Session(impersonate="chrome110")
+        
+        # ВАЖНО: Устанавливаем User-Agent один раз для всей сессии, 
+        # чтобы сайт видел нас как одного и того же пользователя.
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+        })
+
         self.login = os.getenv("REZKA_LOGIN")
         self.password = os.getenv("REZKA_PASS")
         self.is_logged_in = False
-        # Основной домен для запросов. Берём из аргумента либо переменной окружения.
+        # Основной домен для запросов
         self.origin: str = base_url or os.getenv("REZKA_DOMAIN", "https://hdrezka.me")
 
     def auth(self) -> bool:
@@ -76,9 +81,7 @@ class RezkaClient:
 
     def _parse_schedule_table(self, soup: BeautifulSoup) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Парсит все таблицы расписания на странице сериала. Возвращает
-        словарь сезонов со списками эпизодов, каждый содержит
-        идентификатор, номер серии и флаг просмотра.
+        Парсит все таблицы расписания на странице сериала.
         """
         seasons: Dict[str, List[Dict[str, Any]]] = {}
         tables = soup.find_all("table", class_="b-post__schedule_table")
@@ -108,13 +111,19 @@ class RezkaClient:
                     e_id = str(int(e_id))
                 except Exception:
                     pass
-                # Определяем глобальный id
-                global_id = td_1.get("data-id")
+                
+                # Определяем глобальный id (ПРИОРИТЕТ У ИКОНКИ ГЛАЗА)
+                global_id = None
                 action_icon = tr.find(
                     attrs={"class": lambda x: x and "watch-episode-action" in x}
                 )
                 if action_icon and action_icon.get("data-id"):
                     global_id = action_icon.get("data-id")
+                
+                # Если в иконке нет, пробуем data-id строки
+                if not global_id:
+                    global_id = td_1.get("data-id")
+
                 # Доступность: если нет action и нет exists-episode, пропускаем
                 has_action = bool(action_icon)
                 has_exists = bool(tr.find("span", class_="exists-episode"))
@@ -122,6 +131,7 @@ class RezkaClient:
                     continue
                 if not global_id:
                     continue
+                
                 is_watched = self._is_watched_check(tr)
                 if s_id not in seasons:
                     seasons[s_id] = []
@@ -141,7 +151,6 @@ class RezkaClient:
     def _parse_html_list(self, html_content: str, default_season: str = "1") -> Dict[str, Dict[str, Any]]:
         """
         Парсит список эпизодов из HTML, возвращая уникальные эпизоды.
-        Принимает default_season для случаев, когда API возвращает список без номеров сезонов.
         """
         soup = BeautifulSoup(html_content, "html.parser")
         unique_episodes: Dict[str, Dict[str, Any]] = {}
@@ -171,6 +180,7 @@ class RezkaClient:
                     s_id = str(int(s_id))
                     e_id = str(int(e_id))
                     title = item.get_text(strip=True)
+                    
                     global_id = item.get("data-id")
                     if not global_id:
                         inner = item.find(attrs={"data-id": True})
@@ -178,6 +188,7 @@ class RezkaClient:
                             global_id = inner.get("data-id")
                     if not global_id:
                         continue
+                        
                     is_watched = self._is_watched_check(item)
                     unique_episodes[f"{s_id}:{e_id}"] = {
                         "s_id": s_id,
@@ -195,14 +206,13 @@ class RezkaClient:
     # ------------------------
     def get_series_details(self, url: str) -> Dict[str, Any]:
         """
-        Загружает страницу сериала, возвращает информацию о сезонах и эпизодах.
-        Статус просмотра определяется по таблице расписания и данным API.
+        Загружает страницу сериала, возвращает информацию о сезонах, эпизодах и франшизе.
         """
         if not self.auth():
             return {"error": "Auth failed"}
         try:
             r = self.session.get(url)
-            # Если страница ведёт на другой домен (например, .sh), обновляем origin
+            # Обновляем origin если редирект
             try:
                 parsed = urlparse(r.url)
                 if parsed.scheme and parsed.netloc:
@@ -228,16 +238,34 @@ class RezkaClient:
             elif soup.find(id="post_id"):
                 post_id = soup.find(id="post_id").get("value")
             
-            # --- ПАРСИНГ ФРАНШИЗЫ ---
+            # --- ПАРСИНГ ФРАНШИЗЫ (УСИЛЕННЫЙ ПОИСК) ---
             franchises = []
+            franchise_link = None
+            
+            # 1. Попытка: Ищем по стандартному классу
             franchise_link = soup.find("a", class_="b-post__franchise_link_title")
-            if franchise_link:
+            
+            # 2. Попытка: Ищем в блоке b-sidetitle по тексту "Все проекты"
+            if not franchise_link:
+                sidetitles = soup.find_all("div", class_="b-sidetitle")
+                for st in sidetitles:
+                    if "Все проекты" in st.get_text():
+                        franchise_link = st.find("a")
+                        break
+            
+            # 3. Попытка: Ищем любую ссылку содержащую /franchises/
+            if not franchise_link:
+                franchise_link = soup.find("a", href=re.compile(r"/franchises/"))
+
+            if franchise_link and franchise_link.get("href"):
                 franchise_url = franchise_link.get("href")
                 if franchise_url:
-                    # Если ссылка относительная, добавляем домен
                     if franchise_url.startswith("/"):
                         franchise_url = urljoin(self.origin, franchise_url)
+                    print(f"DEBUG: Найдена ссылка на франшизу: {franchise_url}")
                     franchises = self.get_franchise_items(franchise_url)
+            else:
+                print("DEBUG: Франшиза не найдена на странице.")
 
             # Таблица расписания
             table_seasons = self._parse_schedule_table(soup)
@@ -276,7 +304,6 @@ class RezkaClient:
                             data = r_ajax.json()
                             if data.get("success"):
                                 html = data.get("episodes") or data.get("seasons")
-                                # ВАЖНО: передаем season_id, чтобы не скидывало в 1 сезон
                                 new_eps = self._parse_html_list(html, default_season=season_id)
                                 all_unique_episodes.update(new_eps)
                         except Exception:
@@ -365,8 +392,6 @@ class RezkaClient:
     def get_category_items(self, cat_id: str) -> List[Dict[str, Any]]:
         """
         Возвращает список элементов из одной страницы закладок категории `cat_id`.
-        Если необходимо собрать несколько страниц, используйте
-        `get_category_items_paginated`.
         """
         if not self.auth():
             return []
@@ -425,8 +450,7 @@ class RezkaClient:
 
     def get_category_items_paginated(self, cat_id: str, max_pages: int = 5) -> List[Dict[str, Any]]:
         """
-        Собирает элементы из нескольких страниц закладок. Использует
-        `/favorites/<cat_id>/page/<n>/` для обхода страниц.
+        Собирает элементы из нескольких страниц закладок.
         """
         all_items: List[Dict[str, Any]] = []
         seen_ids: set[str] = set()
@@ -473,24 +497,17 @@ class RezkaClient:
     def toggle_watch(self, global_id: str, referer: Optional[str] = None) -> bool:
         """
         Переключает статус просмотра для указанного эпизода.
-
-        Добавлены заголовки и проверка JSON, чтобы убедиться, что
-        сервер принял запрос.
         """
         if not self.auth():
             return False
         try:
-            # Формируем заголовки максимально близко к оригинальному запросу на сайте.
-            # Если передан referer (URL страницы сериала), используем его как Referer,
-            # иначе в качестве Referer берём базовый домен. Это важно для корректного
-            # обновления статуса просмотра на HDRezka.
             ref = referer or self.origin
+            # Используем заголовки сессии (с User-Agent), добавляем специфичные для AJAX
             headers = {
                 "X-Requested-With": "XMLHttpRequest",
                 "Referer": ref,
                 "Origin": self.origin,
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
             }
             print(f"DEBUG: Отправка Toggle Watch ID={global_id}")
             r = self.session.post(
@@ -500,11 +517,10 @@ class RezkaClient:
             )
             print(f"DEBUG: Ответ сервера Toggle: Code={r.status_code}, Body={r.text}")
             try:
-                # Ожидаем JSON, содержащий success или status
                 data = r.json()
+                # Сервер может вернуть {"success": true} или status: ok
                 return bool(data.get("success", False) or data.get("status") == "ok")
             except Exception:
-                # В некоторых случаях сервер возвращает простую строку "ok"
                 return r.status_code == 200
         except Exception as e:
             print(f"ERROR: Ошибка Toggle Watch: {e}")
@@ -515,19 +531,11 @@ class RezkaClient:
     # ------------------------
     def search(self, query: str) -> List[Dict[str, Any]]:
         """
-        Выполняет поиск по сайту и возвращает список найденных фильмов/сериалов.
-
-        Используется внутренний механизм быстрого поиска HDRezka. Функция
-        отправляет POST-запрос на `/engine/ajax/search.php` и парсит HTML, 
-        возвращая элементы в формате, пригодном для выдачи интерфейсу.
-
-        :param query: Строка поискового запроса (не менее 3 символов)
-        :return: Список словарей с ключами id, title, url, poster
+        Выполняет поиск по сайту.
         """
         results: List[Dict[str, Any]] = []
         if not query or len(query.strip()) < 3:
             return results
-        # Авторизация не обязательна для поиска, но на всякий случай выполним
         self.auth()
         try:
             headers = {
@@ -536,7 +544,6 @@ class RezkaClient:
                 "Origin": self.origin,
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             }
-            # Быстрый поиск возвращает HTML в виде списка <li> элементов
             r = self.session.post(
                 f"{self.origin}/engine/ajax/search.php",
                 data={"q": query},
@@ -545,20 +552,15 @@ class RezkaClient:
             if r.status_code != 200:
                 return results
             soup = BeautifulSoup(r.content, "html.parser")
-            # каждая запись в результатах находится в списке .b-search__section_list li
             for li in soup.select(".b-search__section_list li"):
                 try:
-                    # anchor содержит ссылку на страницу
                     anchor = li.find("a")
                     if not anchor:
                         continue
                     url = anchor.get("href")
-                    # На сайте id объекта часто хранится в data-id атрибуте
                     item_id = anchor.get("data-id") or li.get("data-id") or None
-                    # Название находится в спане с классом enty
                     title_span = li.find("span", class_="enty")
                     title = title_span.get_text(strip=True) if title_span else anchor.get_text(strip=True)
-                    # Рейтинг может быть в span.rating
                     rating_span = li.find("span", class_="rating")
                     rating = None
                     if rating_span:
@@ -566,7 +568,6 @@ class RezkaClient:
                             rating = float(rating_span.get_text())
                         except Exception:
                             rating = None
-                    # Обложка в тег img внутри li
                     img = li.find("img")
                     poster = img.get("src") if img else ""
                     results.append({
