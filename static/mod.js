@@ -14,12 +14,12 @@
             var _this = this;
 
             fetch(MY_API_URL + '/api/watching')
-                .then(function (response) {
-                    return response.json();
-                })
+                .then(function (response) { return response.json(); })
                 .then(function (json) {
                     statusLine.remove();
                     if (json && json.length) {
+                        // Выводим в консоль первый элемент для проверки
+                        console.log('REZKA: Первый фильм:', json[0]);
                         _this.render_grid(json);
                     } else {
                         _this.html.append('<div class="empty__descr">Список пуст</div>');
@@ -49,22 +49,25 @@
             });
 
             items.forEach(function (item) {
-                // 1. ОЧИСТКА НАЗВАНИЯ ДЛЯ ПОИСКА
-                // Если название "911: Нашвилл / 9-1-1: Lone Star", берем "911: Нашвилл"
-                var cleanTitle = item.title.split('/')[0].trim();
-                // Убираем год в скобках "(2025)"
-                cleanTitle = cleanTitle.replace(/\(\d{4}\)/, '').trim();
-
-                // 2. КАРТИНКИ ЧЕРЕЗ ТВОЙ СЕРВЕР
+                // --- 1. АГРЕССИВНАЯ ОЧИСТКА НАЗВАНИЯ ---
+                // Берем название до первого разделителя (/ : ( .)
+                var cleanTitle = item.title.split(/[\/:\(\.]/)[0].trim();
+                
+                // --- 2. ПОДГОТОВКА КАРТИНКИ ---
                 var imgUrl = item.poster;
                 if (imgUrl && imgUrl.startsWith('http')) {
-                    // Превращаем прямую ссылку в ссылку через наш прокси
-                    imgUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(imgUrl);
+                    // Добавляем timestamp, чтобы браузер не брал битую картинку из кэша
+                    imgUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(imgUrl) + '&t=' + Date.now();
+                } else {
+                    imgUrl = './img/empty.jpg';
                 }
 
+                // Лог для проверки (посмотрите в F12 -> Console)
+                console.log('REZKA ITEM:', cleanTitle, '=>', imgUrl);
+
                 var card = Lampa.Template.get('card', {
-                    title: item.title,
-                    original_title: cleanTitle, // Это важно для поиска
+                    title: item.title,       // На экране показываем полное название
+                    original_title: cleanTitle, // Для поиска (иногда Лампа берет это)
                     release_year: item.status || '',
                     img: imgUrl
                 });
@@ -72,13 +75,15 @@
                 card.addClass('card--collection');
                 card.css('width', '16.6%');
 
+                // Если картинка не грузится - ставим заглушку
                 card.find('img').on('error', function () {
+                    console.log('REZKA IMG ERROR:', $(this).attr('src'));
                     $(this).attr('src', './img/empty.jpg');
                 });
 
-                // КЛИК -> ПОИСК
+                // --- 3. КЛИК -> ПОИСК ---
                 card.on('hover:enter', function () {
-                    // Отправляем в поиск чистое название
+                    console.log('REZKA SEARCH:', cleanTitle);
                     Lampa.Activity.push({
                         component: 'search',
                         query: cleanTitle
