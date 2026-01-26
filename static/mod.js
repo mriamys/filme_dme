@@ -47,18 +47,17 @@
         };
 
         // ========================================
-        // TMDB API
+        // TMDB API - Поиск
         // ========================================
-        function searchTMDB(title, year, mediaType, callback) {
+        function searchTMDB(titleRu, titleEn, year, mediaType, callback) {
+            // Пробуем сначала английское название (точнее)
+            var searchTitle = titleEn || titleRu;
+            
             var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
                       '?api_key=' + TMDB_API_KEY + 
-                      '&language=ru-RU&query=' + encodeURIComponent(title);
+                      '&language=ru-RU&query=' + encodeURIComponent(searchTitle);
             
-            if (year) {
-                url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
-            }
-            
-            console.log('[Rezka] 🔍 Поиск:', title, year);
+            console.log('[Rezka] 🔍 Поиск:', searchTitle, year);
             
             $.ajax({
                 url: url,
@@ -154,18 +153,28 @@
 
             items.forEach(function (item) {
                 var rawTitle = item.title || '';
+                
+                // Извлекаем год
                 var yearMatch = rawTitle.match(/\((\d{4})\)/);
                 var year = yearMatch ? yearMatch[1] : '';
                 
-                // ✅ ИСПРАВЛЕНО: Берем ПОЛНОЕ русское название (до слеша)
+                // Убираем год
                 var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
-                var titleRu = titleNoYear.split('/')[0].trim(); // ← Полное русское название
                 
-                // Для поиска в TMDB - убираем префикс (до двоеточия)
-                var titleForSearch = titleRu.split(':')[0].trim();
+                // ✅ РУССКОЕ и АНГЛИЙСКОЕ название
+                var parts = titleNoYear.split('/');
+                var titleRu = parts[0].trim();      // "Доктор Кто: Раскрыто"
+                var titleEn = parts[1] ? parts[1].trim() : ''; // "Doctor Who"
+                
+                // Для поиска убираем префикс из русского (если нет английского)
+                var titleRuClean = titleRu.split(':')[0].trim();
+                
+                // Для поиска английское (точнее) или русское
+                var titleForSearch = titleEn || titleRuClean;
 
-                console.log('[Rezka] 📝 Название:', titleRu);
-                console.log('[Rezka] 🔍 Для поиска:', titleForSearch);
+                console.log('[Rezka] 📝 RU:', titleRu);
+                console.log('[Rezka] 📝 EN:', titleEn);
+                console.log('[Rezka] 🔍 Поиск:', titleForSearch);
 
                 const isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                 const mediaType = isTv ? 'tv' : 'movie';
@@ -213,7 +222,7 @@
                     backgroundPosition: 'center'
                 });
 
-                // ✅ СТАТУС ВНИЗУ ПОСТЕРА
+                // ✅ СТАТУС
                 if (item.status) {
                     var statusBadge = $('<div class="rezka-status"></div>');
                     statusBadge.text(item.status);
@@ -235,9 +244,9 @@
 
                 card.append(posterDiv);
 
-                // ✅ НАЗВАНИЕ ПОД ПОСТЕРОМ (ПОЛНОЕ РУССКОЕ)
+                // ✅ НАЗВАНИЕ (полное русское)
                 var titleDiv = $('<div class="rezka-title"></div>');
-                titleDiv.text(titleRu); // ← Полное русское название
+                titleDiv.text(titleRu);
                 titleDiv.css({
                     padding: '10px 8px',
                     fontSize: '13px',
@@ -254,7 +263,7 @@
                 card.append(titleDiv);
 
                 // ========================================
-                // КЛИК (используем titleForSearch)
+                // КЛИК
                 // ========================================
                 function handleClick(e) {
                     if (e) e.preventDefault();
@@ -266,8 +275,7 @@
                     console.log('[Rezka] 🎯 Клик:', titleRu);
                     Lampa.Loading.start(function() {});
 
-                    // ← Ищем по очищенному названию
-                    searchTMDB(titleForSearch, year, mediaType, function(results) {
+                    searchTMDB(titleRuClean, titleEn, year, mediaType, function(results) {
                         Lampa.Loading.stop();
 
                         if (!results.length) {
@@ -275,22 +283,25 @@
                             return;
                         }
 
+                        // ✅ СТРОГАЯ ПРОВЕРКА ПО ГОДУ
                         var exactMatch = null;
                         if (year) {
                             exactMatch = results.find(function(r) {
                                 var rYear = (r.release_date || r.first_air_date || '').substring(0, 4);
-                                return rYear === year;
+                                var rTitle = (r.title || r.name || '').toLowerCase();
+                                var searchTitleLower = titleForSearch.toLowerCase();
+                                
+                                // Год совпадает И название похоже
+                                return rYear === year && rTitle.indexOf(searchTitleLower) !== -1;
                             });
                         }
 
                         if (exactMatch) {
                             console.log('[Rezka] ✅ Точное совпадение:', exactMatch.id);
                             openLampaCard(exactMatch.id, mediaType);
-                        } else if (results.length === 1) {
-                            console.log('[Rezka] ✅ Один результат:', results[0].id);
-                            openLampaCard(results[0].id, mediaType);
                         } else {
-                            console.log('[Rezka] 📋 Показываем список');
+                            // Если нет точного совпадения - показываем список
+                            console.log('[Rezka] 📋 Показываем список для выбора');
                             showSelectionModal(results, mediaType, function(selected) {
                                 openLampaCard(selected.id, mediaType);
                             });
