@@ -7,9 +7,9 @@
         var comp = {};
 
         comp.create = function () {
+            // Используем класс items-vertical для вертикального списка
             this.html = $('<div class="items items--vertical"></div>');
             
-            // Статус загрузки
             var statusLine = $('<div class="empty__descr">Загрузка списка...</div>');
             this.html.append(statusLine);
 
@@ -24,52 +24,55 @@
                     statusLine.remove();
                     
                     if (json && json.length) {
-                        Lampa.Noty.show('Rezka: Найдено ' + json.length + ' шт.');
-                        _this.render_list(json);
+                        Lampa.Noty.show('Rezka: Загружено ' + json.length + ' шт.');
+                        _this.render_grid(json);
                     } else {
                         _this.html.append('<div class="empty__descr">Список пуст</div>');
                     }
                 })
                 .catch(function (error) {
                     statusLine.text('Ошибка: ' + error.message);
-                    Lampa.Noty.show('Rezka Error: ' + error.message);
                 });
 
             return this.render();
         };
 
-        // --- ОБЯЗАТЕЛЬНЫЕ ФУНКЦИИ ЛАМПЫ ---
-        
-        comp.start = function() {
-            // Лампа вызывает это, когда открывает страницу
-        };
+        // Обязательные функции
+        comp.start = function() {};
+        comp.pause = function() {};
+        comp.destroy = function() { this.html.remove(); };
+        comp.render = function() { return this.html; };
 
-        comp.pause = function() {
-            // Лампа вызывает это, когда уходит с этой страницы
-        };
-
-        comp.destroy = function() {
-            // Лампа вызывает это, когда закрывает страницу совсем
-            this.html.remove();
-        };
-
-        comp.render = function() {
-            return this.html;
-        };
-        
-        // ----------------------------------
-
-        comp.render_list = function (items) {
-            var line = Lampa.Template.get('items_line', { title: 'Сейчас смотрю' });
-            var list = line.find('.card-layer');
+        // Рендеринг сеткой (ПЛИТКА)
+        comp.render_grid = function (items) {
+            // Создаем контейнер-обертку
+            var wrapper = $('<div class="category-full"></div>');
+            
+            // Заголовок
+            wrapper.append('<div class="category-full__head">Сейчас смотрю (' + items.length + ')</div>');
+            
+            // Тело сетки
+            var body = $('<div class="category-full__body"></div>');
+            
+            // Принудительные стили для сетки, чтобы карточки не пропадали
+            body.css({
+                'display': 'flex',
+                'flex-wrap': 'wrap',
+                'padding-bottom': '2em'
+            });
 
             items.forEach(function (item) {
+                // Создаем карточку
                 var card = Lampa.Template.get('card', {
                     title: item.title,
                     original_title: item.title,
-                    release_year: '',
+                    release_year: item.status || '', // Показываем серию/статус вместо года
                     img: item.poster
                 });
+                
+                // Стиль карточки для сетки
+                card.addClass('card--collection');
+                card.css('width', '16.6%'); // Примерно 6 в ряд (Lampa сама подправит на мобильных)
 
                 card.find('img').on('error', function () {
                     $(this).attr('src', './img/empty.jpg');
@@ -82,10 +85,14 @@
                     });
                 });
 
-                list.append(card);
+                body.append(card);
             });
 
-            this.html.append(line);
+            wrapper.append(body);
+            this.html.append(wrapper);
+            
+            // Обновляем фокус и скролл контроллера
+            Lampa.Controller.toggle('content');
         };
 
         return comp;
@@ -103,7 +110,7 @@
             $('body').on('click', '[data-action="my_rezka_open"]', function () {
                 Lampa.Activity.push({
                     component: 'my_rezka',
-                    type: 'list'
+                    type: 'component' // Изменил тип на component
                 });
             });
 
