@@ -60,14 +60,11 @@
         comp.renderItems = function(items) {
             console.log('[Rezka] Rendering', items.length, 'cards');
             
-            // Создаем scroll для прокрутки
+            // Создаем scroll
             scroll = new Lampa.Scroll({
                 horizontal: false,
                 step: 250
             });
-            
-            // Wrapper для правильного скролла
-            var wrapper = $('<div class="rezka-wrapper"></div>');
             
             // Grid с карточками
             var grid = $('<div class="rezka-grid"></div>');
@@ -86,8 +83,7 @@
                 grid.append(card);
             });
             
-            wrapper.append(grid);
-            scroll.append(wrapper);
+            scroll.append(grid);
             comp.html.append(scroll.render());
             
             comp.start();
@@ -173,9 +169,10 @@
             
             card.append(titleDiv);
             
-            // Долгое нажатие
+            // Долгое нажатие - правильная реализация
             var longPressTimer = null;
-            var longPressStage = 0;
+            var longPressActivated = false;
+            var currentCard = card;
             
             // Hover эффекты
             card.on('hover:focus', function() {
@@ -193,20 +190,21 @@
                     'z-index': '10'
                 });
                 
-                // Начинаем отсчет долгого нажатия
-                longPressStage = 0;
+                // Сброс флага
+                longPressActivated = false;
+                
+                // Запускаем таймер долгого нажатия
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                }
+                
                 longPressTimer = setTimeout(function() {
-                    longPressStage = 1;
-                    Lampa.Noty.show('📂 Меню управления');
-                    
-                    // Второй уровень - для сериалов
-                    if (isTv) {
-                        longPressTimer = setTimeout(function() {
-                            longPressStage = 2;
-                            Lampa.Noty.show('📺 Выставление серий');
-                        }, 1500);
+                    if (!longPressActivated && !isModalOpen) {
+                        longPressActivated = true;
+                        console.log('[Rezka] Long press activated');
+                        comp.showManageModal(item);
                     }
-                }, 1000);
+                }, 800); // 800ms для активации меню
             });
             
             card.on('hover:blur', function() {
@@ -217,32 +215,26 @@
                     'z-index': '1'
                 });
                 
+                // Очищаем таймер
                 if (longPressTimer) {
                     clearTimeout(longPressTimer);
                     longPressTimer = null;
                 }
-                
-                // Показываем соответствующее меню
-                if (longPressStage === 1) {
-                    comp.showManageModal(item);
-                } else if (longPressStage === 2 && isTv) {
-                    comp.showEpisodesModal(item);
-                }
-                
-                longPressStage = 0;
             });
             
             // Обычный клик
             card.on('hover:enter', function(e) {
                 if (e) e.preventDefault();
                 
+                // Очищаем таймер
                 if (longPressTimer) {
                     clearTimeout(longPressTimer);
                     longPressTimer = null;
                 }
                 
-                if (longPressStage > 0) {
-                    longPressStage = 0;
+                // Если было долгое нажатие - игнорируем клик
+                if (longPressActivated) {
+                    longPressActivated = false;
                     return;
                 }
                 
@@ -304,8 +296,15 @@
             if (isModalOpen) return;
             isModalOpen = true;
             
+            var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
             var items = [];
             
+            // Опция для сериалов
+            if (isTv) {
+                items.push({ title: '📺 Выставить серии', value: 'episodes' });
+            }
+            
+            // Перемещение
             if (category !== 'watching') {
                 items.push({ title: '▶ В Смотрю', value: 'move_watching' });
             }
@@ -323,7 +322,12 @@
                 items: items,
                 onSelect: function(selected) {
                     isModalOpen = false;
-                    comp.handleAction(selected.value, item);
+                    
+                    if (selected.value === 'episodes') {
+                        comp.showEpisodesModal(item);
+                    } else {
+                        comp.handleAction(selected.value, item);
+                    }
                 },
                 onBack: function() {
                     isModalOpen = false;
@@ -536,6 +540,8 @@
                 up: function() {
                     if (Navigator.canmove('up')) {
                         Navigator.move('up');
+                        // Скроллим вверх
+                        if (scroll) scroll.minus();
                     } else {
                         Lampa.Controller.toggle('head');
                     }
@@ -543,6 +549,8 @@
                 down: function() {
                     if (Navigator.canmove('down')) {
                         Navigator.move('down');
+                        // Скроллим вниз
+                        if (scroll) scroll.plus();
                     }
                 },
                 back: function() {
