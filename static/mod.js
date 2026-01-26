@@ -1,7 +1,6 @@
 (function () {
     'use strict';
 
-    // ВАЖНО: Ваш адрес
     var MY_API_URL = 'http://64.188.67.85:8080';
 
     function MyRezkaComponent(object) {
@@ -9,21 +8,18 @@
 
         comp.create = function () {
             this.html = $('<div class="items items--vertical"></div>');
-            var statusLine = $('<div class="empty__descr">Загрузка списка...</div>');
+            var statusLine = $('<div class="empty__descr">Загрузка...</div>');
             this.html.append(statusLine);
 
             var _this = this;
 
             fetch(MY_API_URL + '/api/watching')
                 .then(function (response) {
-                    if (!response.ok) throw new Error(response.status);
                     return response.json();
                 })
                 .then(function (json) {
                     statusLine.remove();
                     if (json && json.length) {
-                        // Уведомление, чтобы знать, что всё ок
-                        Lampa.Noty.show('Rezka: Загружено ' + json.length);
                         _this.render_grid(json);
                     } else {
                         _this.html.append('<div class="empty__descr">Список пуст</div>');
@@ -53,22 +49,22 @@
             });
 
             items.forEach(function (item) {
-                // 1. ЧИСТИМ НАЗВАНИЕ ДЛЯ ПОИСКА
-                // Берем часть до слеша (если название "Ru / En")
+                // 1. ОЧИСТКА НАЗВАНИЯ ДЛЯ ПОИСКА
+                // Если название "911: Нашвилл / 9-1-1: Lone Star", берем "911: Нашвилл"
                 var cleanTitle = item.title.split('/')[0].trim();
-                // Убираем год в скобках, если есть, например "Интерстеллар (2014)" -> "Интерстеллар"
+                // Убираем год в скобках "(2025)"
                 cleanTitle = cleanTitle.replace(/\(\d{4}\)/, '').trim();
 
-                // 2. ИСПОЛЬЗУЕМ ПРОКСИ ДЛЯ КАРТИНОК
-                // Если ссылка есть, гоним её через наш сервер
+                // 2. КАРТИНКИ ЧЕРЕЗ ТВОЙ СЕРВЕР
                 var imgUrl = item.poster;
                 if (imgUrl && imgUrl.startsWith('http')) {
+                    // Превращаем прямую ссылку в ссылку через наш прокси
                     imgUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(imgUrl);
                 }
 
                 var card = Lampa.Template.get('card', {
                     title: item.title,
-                    original_title: cleanTitle, // Используем чистое название для оригинального
+                    original_title: cleanTitle, // Это важно для поиска
                     release_year: item.status || '',
                     img: imgUrl
                 });
@@ -76,14 +72,13 @@
                 card.addClass('card--collection');
                 card.css('width', '16.6%');
 
-                // Если прокси не сработал — заглушка
                 card.find('img').on('error', function () {
                     $(this).attr('src', './img/empty.jpg');
                 });
 
-                // КЛИК - ПОИСК
+                // КЛИК -> ПОИСК
                 card.on('hover:enter', function () {
-                    // Ищем по чистому названию
+                    // Отправляем в поиск чистое название
                     Lampa.Activity.push({
                         component: 'search',
                         query: cleanTitle
