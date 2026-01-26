@@ -1,35 +1,16 @@
 /*
  * Custom plugin for Lampa to display your Rezka favorites.
  *
- * This version addresses two common issues users have encountered with the
- * original implementation:
- *
- *   1. Poster images were not being displayed.  In the first version the
- *      plugin attempted to proxy every poster through the API (`/api/img`).
- *      If the API host was unavailable, used plain `http`, or returned
- *      errors, the `<img>` tags would fall back to a broken URL and the
- *      posters would not render at all.  The updated code now uses the
- *      original `poster` URL provided by the API directly.  Modern browsers
- *      happily load remote images from other domains and Lampa itself
- *      doesn’t restrict cross‑origin images.  Only when a poster URL is
- *      absent will the image fallback handler run.
- *
- *   2. Clicking on a card did nothing.  The previous implementation only
- *      attached a `hover:enter` handler, which is primarily triggered by
- *      remote controls or keyboard navigation.  On devices where users
- *      interact via a mouse or touch screen, the `click` event never fired,
- *      so nothing happened when selecting a title.  The updated code
- *      attaches handlers for both `hover:enter` and `click` events so that
- *      navigation works with a mouse, touch or remote control.
+ * Эта версия решает две основные проблемы: 
+ * 1. Плакаты сериалов проксируются через API, чтобы избежать ошибок смешанного контента.
+ * 2. Обработчики `hover:enter` и `click` добавлены для работы как с пультами, так и с мышью/тачем.
  */
 
 (function () {
     'use strict';
 
-    // Base URL of your backend.  If you host the Rezka backend and this
-    // plugin on the same domain, you can leave this as an empty string
-    // and relative requests will succeed.  Otherwise set this to the
-    // domain (including protocol and port) where your FastAPI app runs.
+    // Укажите адрес своего бэкенда (протокол и порт). 
+    // Можно переопределить через window.MY_API_URL.
     var MY_API_URL = window.MY_API_URL || 'http://64.188.67.85:8080';
 
     function MyRezkaComponent(object) {
@@ -41,8 +22,6 @@
             this.html.append(statusLine);
             var _this = this;
 
-            // Fetch the current "watching" category.  Note: `MY_API_URL` may
-            // be empty if the backend is served on the same origin.
             fetch(MY_API_URL + '/api/watching')
                 .then(function (r) { return r.json(); })
                 .then(function (json) {
@@ -71,22 +50,20 @@
             var body = $('<div class="category-full__body" style="display:flex; flex-wrap:wrap; padding-bottom:2em"></div>');
 
             items.forEach(function (item) {
-                // --- 1. ОЧИСТКА НАЗВАНИЯ ---
+                // Очистка названия
                 var cleanTitle = item.title;
                 if (cleanTitle.indexOf(' / ') > 0) cleanTitle = cleanTitle.split(' / ')[0];
                 cleanTitle = cleanTitle.replace(/\(\d{4}\)/g, '');
-                cleanTitle = cleanTitle.split(':')[0]; // "911: Нашвилл" -> "911"
+                cleanTitle = cleanTitle.split(':')[0];
                 cleanTitle = cleanTitle.trim();
 
-                // --- 2. КАРТИНКИ ---
-                // Always use the original poster URL.  Proxying through the API
-                // is unnecessary for image tags and can result in broken
-                // thumbnails if the proxy server is unreachable.  If no
-                // poster is provided, imgUrl will be undefined and the
-                // `error` handler will replace it with a placeholder.
-                var imgUrl = item.poster || '';
+                // Проксирование изображений
+                var imgUrl = item.poster;
+                if (imgUrl && imgUrl.startsWith('http')) {
+                    imgUrl = MY_API_URL + '/api/img?url=' + encodeURIComponent(imgUrl);
+                }
 
-                // --- 3. КАРТОЧКА ---
+                // Создание карточки
                 var card = Lampa.Template.get('card', {
                     title: item.title,
                     original_title: cleanTitle,
@@ -96,17 +73,12 @@
                 card.addClass('card--collection');
                 card.css('width', '16.6%');
 
-                // Replace a broken poster with a generic placeholder.
+                // Заглушка на случай ошибки загрузки постера
                 card.find('img').on('error', function () {
                     $(this).attr('src', 'https://via.placeholder.com/300x450?text=Нет+изображения');
                 });
 
-                // --- 4. КЛИК -> ПОИСК ---
-                // Add handlers for both keyboard/remote navigation and
-                // mouse/touch interaction.  When a user selects a card,
-                // perform a search by the cleaned title which will open the
-                // results page within Lampa.  Note: using `hover:enter` alone
-                // does not trigger on a touch screen or mouse click.
+                // Переход к поиску по клику/нажатию
                 function openSearch() {
                     Lampa.Activity.push({
                         component: 'search',
