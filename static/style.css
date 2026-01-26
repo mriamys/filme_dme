@@ -4,9 +4,60 @@ body {
     color: var(--tg-theme-text-color, #fff);
     margin: 0;
     padding: 0;
-    padding-bottom: 160px; /* Увеличенный отступ под меню */
+    padding-bottom: 160px;
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
+}
+
+/* --- ВЕРХНЯЯ ПАНЕЛЬ СОРТИРОВКИ --- */
+.top-bar {
+    padding: 10px 15px;
+    display: flex;
+    justify-content: flex-end;
+    background: var(--tg-theme-bg-color);
+}
+.sort-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: var(--tg-theme-text-color);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.sort-menu {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--tg-theme-secondary-bg-color, #222);
+    border-radius: 12px;
+    padding: 10px 0;
+    width: 80%;
+    max-width: 300px;
+    z-index: 2000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.sort-item {
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    font-size: 14px;
+}
+.sort-item:last-child {
+    border-bottom: none;
+}
+.sort-item.active {
+    color: #3390ec;
+    font-weight: bold;
+}
+.sort-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1500;
+    backdrop-filter: blur(2px);
 }
 
 /* --- СЕТКА --- */
@@ -36,7 +87,7 @@ body {
 .card-badge {
     position: absolute;
     top: 8px;
-    right: 8px;
+    left: 8px; /* Слева статус */
     background: rgba(0, 0, 0, 0.8);
     color: white;
     font-size: 10px;
@@ -45,6 +96,20 @@ body {
     border-radius: 6px;
     backdrop-filter: blur(4px);
 }
+/* БЕЙДЖ ГОДА СПРАВА */
+.card-year {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #d2a028; /* Оранжевый цвет Rezka */
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 6px;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
 .card-content {
     padding: 10px;
 }
@@ -115,9 +180,6 @@ body {
 .btn-delete {
     background: #ff3b30;
 }
-
-/* Внутри панели управления элементы переносятся на две колонки, 
-   чтобы кнопки не выходили за пределы экрана на маленьких устройствах. */
 .manage-box .btn-action {
     flex: 1 1 calc(50% - 5px);
     text-align: center;
@@ -267,42 +329,36 @@ body {
     font-weight: bold;
 }
 
-/* --- Франшизы (Горизонтальный скролл) --- */
+/* --- Франшизы --- */
 .franchise-list {
     padding: 0;
     margin-bottom: 10px;
 }
-
-/* Заголовок франшизы (использует стиль season-title, но с отступами) */
 .franchise-list .season-title {
     margin-left: 15px;
     margin-bottom: 10px;
     margin-top: 20px;
 }
-
 .franchise-scroll {
     display: flex;
     overflow-x: auto;
     gap: 10px;
     padding: 0 15px;
     padding-bottom: 10px;
-    -webkit-overflow-scrolling: touch; /* Плавный скролл на iOS */
-    /* Скрываем скроллбар */
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
+    -webkit-overflow-scrolling: touch; 
+    scrollbar-width: none; 
+    -ms-overflow-style: none;
 }
 .franchise-scroll::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
+    display: none;
 }
-
 .franchise-card {
     width: 100px;
-    min-width: 100px; /* Чтобы карточки не сжимались */
+    min-width: 100px;
     cursor: pointer;
     display: flex;
     flex-direction: column;
 }
-
 .franchise-card img {
     width: 100px;
     height: 150px;
@@ -312,25 +368,21 @@ body {
     margin-bottom: 6px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-
 .f-info {
     display: flex;
     flex-direction: column;
 }
-
 .f-title {
     font-size: 11px;
     font-weight: 500;
     line-height: 1.3;
     color: var(--tg-theme-text-color, #fff);
-    /* Обрезаем текст до 2 строк */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
 .f-year {
     font-size: 10px;
     color: #888;

@@ -9,6 +9,19 @@
 </head>
 <body>
 
+    <div class="top-bar">
+        <button class="sort-btn" onclick="toggleSortMenu()">⇅ Сортировка</button>
+    </div>
+
+    <div id="sort-menu" class="sort-menu" style="display: none;">
+        <div class="sort-item active" onclick="applySort('added_desc', this)">📅 Добавление (Новые)</div>
+        <div class="sort-item" onclick="applySort('added_asc', this)">📅 Добавление (Старые)</div>
+        <div class="sort-item" onclick="applySort('year_desc', this)">🎬 Год выпуска (Новые)</div>
+        <div class="sort-item" onclick="applySort('year_asc', this)">🎬 Год выпуска (Старые)</div>
+        <div class="sort-item" onclick="applySort('title', this)">🔤 По названию (А-Я)</div>
+    </div>
+    <div id="sort-overlay" class="sort-overlay" style="display: none;" onclick="toggleSortMenu()"></div>
+
     <div id="search-ui" class="search-box">
         <input type="search" id="q" placeholder="Поиск сериалов..." oninput="doSearch(this.value)" autocomplete="off">
         <div id="search-results"></div>

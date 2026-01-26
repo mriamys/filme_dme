@@ -1,45 +1,119 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-// Текущая выбранная категория (используется для удаления и обновления списка)
+// Текущая выбранная категория
 let currentCategory = 'watching';
+// Кэш для сортировки
+let allLoadedItems = [];
+// Текущий метод сортировки
+let currentSort = 'added_desc';
 
 // Переключение вкладок
 async function switchTab(cat, btn) {
     currentCategory = cat;
     document.getElementById('search-ui').style.display = 'none';
     document.getElementById('grid').style.display = 'grid';
+    document.querySelector('.top-bar').style.display = 'flex'; // Показываем панель сортировки
+    
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
+    
     loadGrid(cat);
 }
 
-// Загрузка сетки для выбранной категории
+// Управление меню сортировки
+function toggleSortMenu() {
+    const menu = document.getElementById('sort-menu');
+    const overlay = document.getElementById('sort-overlay');
+    if (menu.style.display === 'none') {
+        menu.style.display = 'block';
+        overlay.style.display = 'block';
+        // Подсветка текущей
+        document.querySelectorAll('.sort-item').forEach(el => el.classList.remove('active'));
+        const activeItem = [...document.querySelectorAll('.sort-item')].find(el => el.getAttribute('onclick').includes(currentSort));
+        if (activeItem) activeItem.classList.add('active');
+    } else {
+        menu.style.display = 'none';
+        overlay.style.display = 'none';
+    }
+}
+
+function applySort(type) {
+    currentSort = type;
+    toggleSortMenu();
+    renderSortedGrid();
+}
+
+function sortItems(items) {
+    let sorted = [...items];
+    if (currentSort === 'added_desc') return sorted;
+    if (currentSort === 'added_asc') return sorted.reverse();
+    
+    if (currentSort === 'year_desc' || currentSort === 'year_asc') {
+        sorted.sort((a, b) => {
+            // Берем год из поля year, если есть, или парсим из title
+            let ya = parseInt(a.year || (a.title.match(/\((\d{4})\)/) || [])[1] || 0);
+            let yb = parseInt(b.year || (b.title.match(/\((\d{4})\)/) || [])[1] || 0);
+            return currentSort === 'year_desc' ? yb - ya : ya - yb;
+        });
+    }
+    
+    if (currentSort === 'title') {
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+    }
+    
+    return sorted;
+}
+
+function renderSortedGrid() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    
+    const sorted = sortItems(allLoadedItems);
+    
+    if (!sorted || sorted.length === 0) {
+        grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Список пуст</div>';
+        return;
+    }
+    
+    sorted.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.onclick = () => openDetails(item.url, item.title, item.poster);
+        
+        // Удаляем год из названия для чистоты (опционально)
+        const cleanTitle = item.title.replace(/\s*\(\d{4}\)/, '');
+        
+        div.innerHTML = `
+            <div class="card-badge">${item.status || 'Фильм'}</div>
+            ${item.year ? `<div class="card-year">${item.year}</div>` : ''}
+            <img src="${item.poster}" loading="lazy">
+            <div class="card-content">
+                <div class="card-title">${cleanTitle}</div>
+                <div class="card-sub">HDRezka</div>
+            </div>
+        `;
+        grid.appendChild(div);
+    });
+}
+
+// Загрузка сетки
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
     try {
         const res = await fetch(`/api/${cat}`);
         const data = await res.json();
-        grid.innerHTML = '';
+        
         if (!data || data.length === 0) {
-            grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Список пуст</div>';
+            allLoadedItems = [];
+            renderSortedGrid();
             return;
         }
-        data.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'card';
-            div.onclick = () => openDetails(item.url, item.title, item.poster);
-            div.innerHTML = `
-                <div class="card-badge">${item.status || 'Фильм'}</div>
-                <img src="${item.poster}" loading="lazy">
-                <div class="card-content">
-                    <div class="card-title">${item.title}</div>
-                    <div class="card-sub">HDRezka</div>
-                </div>
-            `;
-            grid.appendChild(div);
-        });
+        
+        allLoadedItems = data;
+        renderSortedGrid();
+        
     } catch (e) {
         grid.innerHTML = '<div style="grid-column:span 2; text-align:center;">Ошибка соединения</div>';
     }
@@ -47,10 +121,9 @@ async function loadGrid(cat) {
 
 // Переменные для деталей
 let currentPostId = null;
-// Храним URL текущей страницы сериала для передачи в toggle
 let currentDetailsUrl = null;
 
-// Открытие модального окна с деталями
+// Открытие модального окна
 async function openDetails(url, title, poster) {
     const modal = document.getElementById('details');
     modal.classList.add('open');
@@ -58,11 +131,17 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-title').innerText = title;
     document.getElementById('det-controls').style.display = 'none';
     
-    // Очищаем франшизы
+    // Сброс
+    currentPostId = null; 
+    
+    // Пытаемся сразу достать ID из URL (на случай если API затупит)
+    // URL типа: https://hdrezka.me/films/fiction/2259-interstellar-2014.html
+    const match = url.match(/\/(\d+)-/);
+    if (match) currentPostId = match[1];
+
     const franchiseContainer = document.getElementById('det-franchises');
     if (franchiseContainer) franchiseContainer.innerHTML = '';
 
-    // Сохраняем URL страницы для использования в toggle
     currentDetailsUrl = url;
     const list = document.getElementById('det-list');
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка серий...</div>';
@@ -73,8 +152,13 @@ async function openDetails(url, title, poster) {
         
         if (data.post_id) {
             currentPostId = data.post_id;
+        }
+        
+        // Показываем кнопки только если есть ID
+        if (currentPostId) {
             document.getElementById('det-controls').style.display = 'flex';
         }
+        
         if (data.poster) document.getElementById('det-img').src = data.poster;
         
         list.innerHTML = '';
@@ -82,7 +166,7 @@ async function openDetails(url, title, poster) {
             list.innerHTML = `<div style="text-align:center; padding:20px;">${data.error}</div>`;
         }
 
-        // --- Рендеринг франшиз (если они пришли) ---
+        // Франшизы
         if (data.franchises && data.franchises.length > 0) {
             if (franchiseContainer) {
                 const fTitle = document.createElement('div');
@@ -96,13 +180,12 @@ async function openDetails(url, title, poster) {
                 data.franchises.forEach(f => {
                     const item = document.createElement('div');
                     item.className = 'franchise-card';
-                    // Рекурсивный вызов для перехода по франшизе
                     item.onclick = () => openDetails(f.url, f.title, f.poster);
                     item.innerHTML = `
                         <img src="${f.poster}">
                         <div class="f-info">
                             <div class="f-title">${f.title}</div>
-                            <div class="f-year">${f.info || ''}</div>
+                            <div class="f-year">${f.info || f.year || ''}</div>
                         </div>
                     `;
                     fScroll.appendChild(item);
@@ -111,7 +194,7 @@ async function openDetails(url, title, poster) {
             }
         }
 
-        // --- Рендер сезонов и эпизодов ---
+        // Сезоны
         if (data.seasons) {
             Object.keys(data.seasons).forEach(s => {
                 const h = document.createElement('div');
@@ -135,14 +218,16 @@ async function openDetails(url, title, poster) {
     }
 }
 
-// Закрыть модальное окно
 function closeDetails() {
     document.getElementById('details').classList.remove('open');
 }
 
-// Переместить фильм/сериал в другую категорию
+// Переместить фильм
 async function moveMovie(category) {
-    if (!currentPostId) return;
+    if (!currentPostId) {
+        alert('Ошибка: ID фильма не найден');
+        return;
+    }
     tg.HapticFeedback.notificationOccurred('success');
     await fetch('/api/add', {
         method: 'POST',
@@ -151,13 +236,16 @@ async function moveMovie(category) {
     });
     alert('Перенесено!');
     closeDetails();
-    // Перезагружаем текущую вкладку
-    switchTab(currentCategory, document.querySelector('.tab-btn.active'));
+    // Обновляем текущий список
+    loadGrid(currentCategory);
 }
 
-// Удалить фильм/сериал из текущей категории
+// Удалить фильм
 async function deleteMovie() {
-    if (!currentPostId) return;
+    if (!currentPostId) {
+        alert('Ошибка: ID фильма не найден');
+        return;
+    }
     tg.HapticFeedback.notificationOccurred('success');
     await fetch('/api/delete', {
         method: 'POST',
@@ -166,10 +254,9 @@ async function deleteMovie() {
     });
     alert('Удалено!');
     closeDetails();
-    switchTab(currentCategory, document.querySelector('.tab-btn.active'));
+    loadGrid(currentCategory);
 }
 
-// Переключить статус просмотра эпизода
 async function toggle(gid, btn) {
     tg.HapticFeedback.impactOccurred('medium');
     const row = btn.rowElement;
@@ -188,19 +275,18 @@ async function toggle(gid, btn) {
     });
 }
 
-// Открыть поиск
 function openSearch(btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('grid').style.display = 'none';
+    document.querySelector('.top-bar').style.display = 'none'; // Скрываем сортировку в поиске
     document.getElementById('search-ui').style.display = 'block';
     const input = document.getElementById('q');
     input.focus();
-    input.value = ''; // Очищаем поле при открытии
+    input.value = ''; 
     document.getElementById('search-results').innerHTML = '';
 }
 
-// Поиск с таймером
 let searchTimer;
 function doSearch(val) {
     clearTimeout(searchTimer);
@@ -217,8 +303,12 @@ function doSearch(val) {
         data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'search-item';
+            
+            // Отображаем год в поиске, если есть
+            let titleHTML = item.title;
+            
             div.innerHTML = `
-                <div class="search-title">${item.title}</div>
+                <div class="search-title">${titleHTML}</div>
                 <div class="search-actions">
                     <button class="btn-action btn-watch" onclick="addFav('${item.id}', 'watching')">+ Смотрю</button>
                     <button class="btn-action btn-later" onclick="addFav('${item.id}', 'later')">+ Позже</button>
@@ -230,7 +320,6 @@ function doSearch(val) {
     }, 600);
 }
 
-// Добавить фильм/сериал из поиска
 async function addFav(id, cat) {
     tg.HapticFeedback.notificationOccurred('success');
     await fetch('/api/add', {
@@ -241,5 +330,4 @@ async function addFav(id, cat) {
     alert('Добавлено!');
 }
 
-// Инициализация: подгружаем список «Смотрю»
 loadGrid('watching');
