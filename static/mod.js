@@ -1,8 +1,9 @@
 (function () {
     'use strict';
 
-    // Твой сервер
-    var MY_API_URL = 'https://filme.127.0.0.1.sslip.io';
+    // ВАЖНО: Адрес вашего сервера (VPS).
+    // Если поменять на 127.0.0.1, то работать будет ТОЛЬКО на том же компьютере, где сервер.
+    var MY_API_URL = 'https://filme.64.188.67.85.sslip.io';
 
     function MyRezkaComponent(object) {
         var comp = new Lampa.Component(object, {
@@ -13,7 +14,7 @@
         comp.create = function () {
             this.activity.loader(true);
             
-            // Запрос к твоему API
+            // Запрос к API
             Lampa.Network.silent(MY_API_URL + '/api/watching', function (json) {
                 comp.activity.loader(false);
                 
@@ -24,23 +25,25 @@
                             title: item.title,
                             original_title: item.title,
                             img: item.poster,
-                            query: item.title // По этому названию Лампа будет искать фильм
+                            // Важно: по этому полю Лампа будет искать (Search)
+                            query: item.title 
                         });
                     });
                     comp.render_list(items);
                 } else {
                     comp.empty('Список пуст');
                 }
-            }, function () {
+            }, function (a, c) {
                 comp.activity.loader(false);
-                comp.empty('Ошибка подключения: ' + MY_API_URL);
+                // Показываем ошибку с адресом, чтобы было понятно, куда не достучались
+                comp.empty('Ошибка: ' + MY_API_URL + ' (' + c + ')');
             });
             
             return this.render();
         };
 
         comp.on_click = function (item) {
-            // При клике открываем поиск Лампы по названию
+            // При клике отправляем название фильма в поиск Лампы
             Lampa.Activity.push({
                 component: 'search',
                 query: item.query
@@ -67,10 +70,9 @@
         return comp;
     }
 
-    // Добавляем кнопку в меню
+    // Добавляем кнопку в боковое меню
     Lampa.Listener.follow('app', function (e) {
         if (e.type == 'ready') {
-            // Добавляем пункт в меню слева
             $('.menu .menu__list').eq(0).append(
                 '<li class="menu__item selector" data-action="my_rezka_open">' +
                     '<div class="menu__ico">R</div>' +
