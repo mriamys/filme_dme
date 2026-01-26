@@ -6,7 +6,7 @@ let currentCategory = 'watching';
 let art = null;
 let currentMovieTitle = "";
 
-// --- ОБЫЧНЫЕ ФУНКЦИИ (Rezka) ---
+// --- НАВИГАЦИЯ (HDREZKA) ---
 
 async function switchTab(cat, btn) {
     currentCategory = cat;
@@ -57,12 +57,10 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-title').innerText = title;
     currentMovieTitle = title;
     
-    closePlayer(); // Сброс плеера
+    closePlayer(); 
     document.getElementById('det-controls').style.display = 'none';
     const list = document.getElementById('det-list');
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка...</div>';
-    
-    // Чистим франшизы
     document.getElementById('det-franchises').innerHTML = '';
 
     currentDetailsUrl = url;
@@ -78,7 +76,6 @@ async function openDetails(url, title, poster) {
         
         list.innerHTML = '';
         
-        // Рендер франшиз (если есть)
         if (data.franchises && data.franchises.length > 0) {
             const fContainer = document.getElementById('det-franchises');
             const fTitle = document.createElement('div');
@@ -98,7 +95,6 @@ async function openDetails(url, title, poster) {
             fContainer.appendChild(fScroll);
         }
 
-        // Рендер серий
         if (data.seasons) {
             Object.keys(data.seasons).forEach(s => {
                 const h = document.createElement('div');
@@ -127,9 +123,8 @@ function closeDetails() {
     document.getElementById('details').classList.remove('open');
 }
 
-// --- ЛОГИКА KINOGO ---
+// --- ЛОГИКА KINOGO (CLIENT SIDE) ---
 
-// 1. Поиск (Через сервер, как в server.py)
 async function startOnlineView() {
     if (!currentMovieTitle) return;
     
@@ -137,17 +132,16 @@ async function startOnlineView() {
     const originalText = btn.innerText;
     btn.innerText = "🔍 Поиск на сервере...";
     
-    // Убираем лишнее из названия (год, англ название) для лучшего поиска
+    // Очистка названия
     let cleanTitle = currentMovieTitle.split('(')[0].split('/')[0].trim();
     
     try {
-        // ОБРАЩАЕМСЯ К НАШЕМУ СЕРВЕРУ (FastAPI + Playwright)
+        // 1. Ищем через сервер (Playwright в Германии)
         const res = await fetch(`/api/kinogo/search?q=${encodeURIComponent(cleanTitle)}`);
         const results = await res.json();
         
         if (!results || results.length === 0) {
-            // Если не нашли, пробуем ручной ввод
-            let manual = prompt("Сервер не нашел фильм. Введите название для поиска (Kinogo):", cleanTitle);
+            let manual = prompt("Сервер не нашел фильм. Введите название (Kinogo):", cleanTitle);
             if (manual) {
                 const res2 = await fetch(`/api/kinogo/search?q=${encodeURIComponent(manual)}`);
                 const results2 = await res2.json();
@@ -163,7 +157,6 @@ async function startOnlineView() {
             return;
         }
         
-        // Берем первый результат
         processSearchResult(results[0], btn, originalText);
         
     } catch (e) {
@@ -174,49 +167,109 @@ async function startOnlineView() {
 
 async function processSearchResult(item, btn, originalText) {
     console.log("Найден фильм:", item.title, item.url);
-    btn.innerText = "⏳ Загрузка плеера...";
+    btn.innerText = "⏳ Парсинг плеера...";
     
-    // 2. Просмотр (Напрямую с клиента, чтобы не блокировало видео)
-    // Мы получили ссылку от сервера, теперь парсим её сами
-    await loadKinogoPageClient(item.url);
-    
-    btn.innerText = originalText;
+    // 2. Парсим страницу уже БРАУЗЕРОМ (Украина)
+    await loadKinogoPageClient(item.url, btn, originalText);
 }
 
-// Эта функция работает В БРАУЗЕРЕ (Украина)
-async function loadKinogoPageClient(url) {
+// Умный парсинг с поиском iframe
+async function loadKinogoPageClient(url, btn, originalText) {
     try {
-        // ВАЖНО: Тут нужно расширение CORS, так как запрос идет на kinogo.inc
+        // Загружаем главную страницу фильма
         const res = await fetch(url);
-        const text = await res.text();
+        const htmlText = await res.text();
         
-        // Показываем плеер
+        // Показываем контейнер плеера заранее
         document.getElementById('player-container').style.display = 'block';
         document.getElementById('translation-box').style.display = 'block';
-        
-        // Ищем m3u8 в коде страницы
-        const m3u8Match = text.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/);
-        
-        if (m3u8Match && m3u8Match[1]) {
-            let streamUrl = m3u8Match[1];
+
+        // 1. Пробуем найти m3u8 сразу на странице
+        let streamUrl = findM3u8InText(htmlText);
+
+        if (streamUrl) {
+            console.log("Прямая ссылка найдена сразу!");
             initPlayer(streamUrl);
-        } else {
-            alert("Плеер найден, но прямая ссылка скрыта. Попробуйте другой фильм или включите VPN/CORS.");
+            btn.innerText = originalText;
+            return;
+        }
+
+        // 2. Если нет, ищем iframe с плеером
+        console.log("Прямая ссылка не найдена, ищем iframe...");
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+        
+        // Ищем iframe, у которого src похож на плеер
+        const iframes = doc.querySelectorAll('iframe');
+        let foundIframeUrl = null;
+
+        for (let iframe of iframes) {
+            let src = iframe.src || iframe.getAttribute('data-src');
+            if (src && (src.includes('kinogo') || src.includes('kodik') || src.includes('cdn') || src.includes('player'))) {
+                foundIframeUrl = src;
+                break;
+            }
         }
         
-        // Тут можно добавить логику парсинга озвучек, если нужно
-        const select = document.getElementById('translation-select');
-        select.innerHTML = '<option>Kinogo (Default)</option>';
+        // Если нашли iframe, но ссылка относительная (//site.com или /player)
+        if (foundIframeUrl) {
+            if (foundIframeUrl.startsWith('//')) foundIframeUrl = 'https:' + foundIframeUrl;
+            if (foundIframeUrl.startsWith('/')) foundIframeUrl = 'https://kinogo.inc' + foundIframeUrl;
+            
+            console.log("Найден iframe:", foundIframeUrl);
+            btn.innerText = "⏳ Вскрываем iframe...";
+
+            // 3. Загружаем содержимое iframe
+            try {
+                const iframeRes = await fetch(foundIframeUrl);
+                const iframeText = await iframeRes.text();
+                
+                streamUrl = findM3u8InText(iframeText);
+                
+                if (streamUrl) {
+                    console.log("Ссылка найдена внутри iframe!");
+                    initPlayer(streamUrl);
+                } else {
+                    alert("Плеер найден, но поток зашифрован или недоступен.");
+                    closePlayer();
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Не удалось загрузить iframe (CORS?). Проверьте расширение.");
+                closePlayer();
+            }
+
+        } else {
+            alert("Плеер не найден на странице.");
+            closePlayer();
+        }
+        
+        btn.innerText = originalText;
         
     } catch (e) {
-        alert("Ошибка загрузки страницы Kinogo! Убедитесь, что у вас включено расширение 'Allow CORS' в браузере.");
+        alert("Ошибка доступа к сайту (CORS). Включите расширение!");
         console.error(e);
+        btn.innerText = originalText;
+        closePlayer();
     }
+}
+
+// Хелпер для поиска ссылки в тексте
+function findM3u8InText(text) {
+    // Ищем .m3u8 внутри кавычек
+    const match = text.match(/["']([^"']+\.m3u8[^"']*)["']/);
+    if (match && match[1]) {
+        return match[1];
+    }
+    return null;
 }
 
 function initPlayer(url) {
     if (art) art.destroy();
     
+    // Если ссылка относительная
+    if (url.startsWith('/')) url = 'https://kinogo.inc' + url;
+
     art = new Artplayer({
         container: '#artplayer',
         url: url,
@@ -239,7 +292,6 @@ function initPlayer(url) {
         lang: 'ru'
     });
     
-    // Скролл к плееру
     document.getElementById('player-container').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -252,11 +304,7 @@ function closePlayer() {
     document.getElementById('translation-box').style.display = 'none';
 }
 
-function changeTranslation(val) {
-    console.log("Смена озвучки пока не реализована в клиенте");
-}
-
-// ... (остальные функции для работы с закладками и поиском Rezka без изменений)
+// ... Остальные функции (toggle, moveMovie и т.д.) без изменений ...
 async function moveMovie(category) {
     if (!currentPostId) return;
     tg.HapticFeedback.notificationOccurred('success');
