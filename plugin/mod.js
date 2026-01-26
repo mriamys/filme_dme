@@ -160,6 +160,8 @@
                     'z-index': '10'
                 });
                 last_item = item;
+                // Принудительная прокрутка к элементу для ТВ
+                if (scroll) scroll.update(card);
             });
             
             card.on('hover:blur', function() {
@@ -292,6 +294,7 @@
                 },
                 onBack: function() {
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -335,6 +338,7 @@
                 },
                 onBack: function() {
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -354,6 +358,7 @@
                     if (!details || !details.seasons) {
                         Lampa.Noty.show('Ошибка');
                         isModalOpen = false;
+                        Lampa.Controller.toggle('content');
                         return;
                     }
                     
@@ -379,6 +384,7 @@
                         },
                         onBack: function() {
                             isModalOpen = false;
+                            Lampa.Controller.toggle('content');
                         }
                     });
                 },
@@ -386,6 +392,7 @@
                     Lampa.Loading.stop();
                     Lampa.Noty.show('Ошибка');
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -415,6 +422,7 @@
                 },
                 onBack: function() {
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -431,11 +439,13 @@
                     Lampa.Noty.show(res.success ? '✅' : '❌');
                     isModalOpen = false;
                     if (res.success) comp.reload();
+                    else Lampa.Controller.toggle('content');
                 },
                 error: function() {
                     Lampa.Loading.stop();
                     Lampa.Noty.show('❌');
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -452,11 +462,13 @@
                     Lampa.Noty.show(res.success ? '✅ ' + res.marked : '❌');
                     isModalOpen = false;
                     if (res.success) comp.reload();
+                    else Lampa.Controller.toggle('content');
                 },
                 error: function() {
                     Lampa.Loading.stop();
                     Lampa.Noty.show('❌');
                     isModalOpen = false;
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -485,10 +497,12 @@
                     Lampa.Loading.stop();
                     Lampa.Noty.show(res.success ? '✅' : '❌');
                     if (res.success) comp.reload();
+                    else Lampa.Controller.toggle('content');
                 },
                 error: function() {
                     Lampa.Loading.stop();
                     Lampa.Noty.show('❌');
+                    Lampa.Controller.toggle('content');
                 }
             });
         };
@@ -500,20 +514,29 @@
         comp.start = function() {
             console.log('[Rezka] Start');
             
+            // Настройка контроллера для управления пультом
             Lampa.Controller.add('content', {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
-                    Lampa.Controller.collectionFocus(last_item, comp.html);
+                    // Важно: фокусируемся на селекторе
+                    var target = comp.html.find('.selector.rezka-card').first();
+                    if (last_item) {
+                        target = comp.html.find('.selector.rezka-card').filter(function() {
+                             return $(this).data('item') && $(this).data('item').url === last_item.url;
+                        });
+                    }
+                    Lampa.Controller.collectionFocus(target.length ? target : false, comp.html);
                 },
                 back: function() {
                     Lampa.Activity.backward();
                 }
             });
             
-            // Красная кнопка - код 403
+            // Обработка кнопок пульта (включая цветные)
             $('body').off('keydown.rezka').on('keydown.rezka', function(e) {
                 if (Lampa.Controller.enabled().name === 'content') {
-                    if (e.keyCode === 403 && last_item && !isModalOpen) {
+                    // Код 403 - Красная кнопка. Код 1014/36 - часто встречается на некоторых ТВ для меню
+                    if ((e.keyCode === 403 || e.keyCode === 36 || e.keyCode === 1014) && last_item && !isModalOpen) {
                         e.preventDefault();
                         e.stopPropagation();
                         comp.menu(last_item);
@@ -575,6 +598,11 @@
                 });
                 menu.append(mi);
             });
+            
+            // Если мы уже в приложении, нужно обновить навигацию
+            if (Lampa.Controller.enabled().name === 'menu') {
+                Lampa.Controller.toggle('menu');
+            }
         }, 1000);
     }
     
