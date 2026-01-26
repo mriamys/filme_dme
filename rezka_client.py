@@ -193,14 +193,28 @@ class RezkaClient:
                     e_id = str(int(e_id))
                     title = item.get_text(strip=True)
                     
-                    global_id = item.get("data-id")
+                    # Получаем глобальный ID эпизода. В приоритете id иконки watch-episode-action,
+                    # так как он соответствует функции отметки "просмотрено". Затем пытаемся
+                    # взять data-id из самого элемента, и в последнюю очередь — из любого
+                    # дочернего элемента с data-id.
+                    global_id: Optional[str] = None
+                    # Ищем иконку 
+                    action_icon = item.find(
+                        attrs={"class": lambda x: x and "watch-episode-action" in x}
+                    )
+                    if action_icon and action_icon.get("data-id"):
+                        global_id = action_icon.get("data-id")
+                    # Если не нашли иконку, берём data-id из элемента
+                    if not global_id:
+                        if item.get("data-id"):
+                            global_id = item.get("data-id")
+                    # Если не нашли, ищем первый дочерний элемент с data-id
                     if not global_id:
                         inner = item.find(attrs={"data-id": True})
-                        if inner:
+                        if inner and inner.get("data-id"):
                             global_id = inner.get("data-id")
                     if not global_id:
                         continue
-                        
                     is_watched = self._is_watched_check(item)
                     unique_episodes[f"{s_id}:{e_id}"] = {
                         "s_id": s_id,
@@ -367,7 +381,11 @@ class RezkaClient:
                                 found = True
                                 if t_ep["watched"]:
                                     p_ep["watched"] = True
-                                if not p_ep["global_id"]:
+                                # Всегда обновляем global_id из расписания, так как id в списке
+                                # эпизодов может указывать на пост, а не на эпизод. В таблице
+                                # расписания data-id совпадает с data-id иконки watch-episode-action
+                                # (глобальный ID эпизода). Поэтому если оно доступно, то замещаем.
+                                if t_ep.get("global_id"):
                                     p_ep["global_id"] = t_ep["global_id"]
                                 break
                         if not found:
