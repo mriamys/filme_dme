@@ -11,11 +11,11 @@
     // ========================================
     function RezkaCategory(category) {
         var comp = {};
-        comp.html = $('<div class="rezka-category"></div>');
+        var html = $('<div class="category-full"></div>');
         var scroll = null;
-        var cards = [];
         var items_data = [];
         var isModalOpen = false;
+        var last_item = null;
         
         var endpoints = {
             'watching': '/api/watching',
@@ -27,7 +27,7 @@
             console.log('[Rezka] Creating category:', category);
             
             var loader = $('<div class="broadcast__text">Загрузка...</div>');
-            comp.html.append(loader);
+            html.append(loader);
             
             $.ajax({
                 url: MY_API_URL + endpoints[category],
@@ -40,61 +40,47 @@
                     
                     if (items && items.length > 0) {
                         console.log('[Rezka] Loaded:', items.length, 'items');
-                        comp.renderItems(items);
+                        comp.build(items);
+                        comp.start();
                     } else {
-                        comp.html.append('<div class="broadcast__text">Список пуст</div>');
+                        html.append('<div class="broadcast__text">Список пуст</div>');
+                        Lampa.Controller.enable('content');
                     }
-                    
-                    Lampa.Controller.enable('content');
                 },
                 error: function(err) {
                     console.error('[Rezka] Error:', err);
                     loader.remove();
-                    comp.html.append('<div class="broadcast__text">Ошибка загрузки</div>');
+                    html.append('<div class="broadcast__text">Ошибка загрузки</div>');
                 }
             });
             
-            return comp.html;
+            return html;
         };
         
-        comp.renderItems = function(items) {
-            console.log('[Rezka] Rendering', items.length, 'cards');
+        comp.build = function(items) {
+            console.log('[Rezka] Building', items.length, 'cards');
             
-            // Создаем scroll
+            // Используем Lampa.Scroll
             scroll = new Lampa.Scroll({
                 horizontal: false,
                 step: 250
             });
             
-            // Grid с карточками
-            var grid = $('<div class="rezka-grid"></div>');
-            grid.css({
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-                gap: '20px',
-                padding: '20px',
-                width: '100%',
-                boxSizing: 'border-box'
+            var content = $('<div class="category-full__cards"></div>');
+            
+            items.forEach(function(item) {
+                var card = comp.card(item);
+                content.append(card);
             });
             
-            items.forEach(function(item, index) {
-                var card = comp.createCard(item, index);
-                cards.push(card);
-                grid.append(card);
-            });
-            
-            scroll.append(grid);
-            comp.html.append(scroll.render());
-            
-            comp.start();
+            scroll.append(content);
+            html.append(scroll.render());
         };
         
-        comp.createCard = function(item, index) {
+        comp.card = function(item) {
             var rawTitle = item.title || '';
-            
             var yearMatch = rawTitle.match(/\((\d{4})\)/);
             var year = yearMatch ? yearMatch[1] : '';
-            
             var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
             var parts = titleNoYear.split('/');
             var titleRu = parts[0].trim();
@@ -103,142 +89,61 @@
             
             var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
             var mediaType = isTv ? 'tv' : 'movie';
-            
             var posterUrl = item.poster ? MY_API_URL + '/api/img?url=' + encodeURIComponent(item.poster) : '';
             
-            // Карточка
-            var card = $('<div class="rezka-card selector"></div>');
-            card.attr('data-index', index);
-            card.css({
-                position: 'relative',
-                cursor: 'pointer',
-                borderRadius: '10px',
-                overflow: 'hidden',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                backgroundColor: '#1a1a1a'
+            // Используем стандартный шаблон карточки Lampa
+            var card = Lampa.Template.get('card', {
+                title: titleRu,
+                release_year: year
             });
             
-            // Постер
-            var posterDiv = $('<div class="rezka-poster"></div>');
-            posterDiv.css({
-                width: '100%',
-                paddingBottom: '150%',
-                position: 'relative',
-                backgroundImage: posterUrl ? 'url(' + posterUrl + ')' : 'none',
-                backgroundColor: '#2a2a2a',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-            });
+            // Устанавливаем постер
+            var img = card.find('.card__img')[0];
+            if (img && posterUrl) {
+                img.onload = function() {
+                    card.addClass('card--loaded');
+                };
+                img.onerror = function() {
+                    card.addClass('card--loaded');
+                };
+                img.src = posterUrl;
+            }
             
             // Статус
             if (item.status) {
-                var statusBadge = $('<div></div>');
-                statusBadge.text(item.status);
-                statusBadge.css({
-                    position: 'absolute',
-                    bottom: '0',
-                    left: '0',
-                    right: '0',
-                    padding: '5px 8px',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.7))',
-                    color: '#fff',
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                    textAlign: 'center',
-                    zIndex: '2'
-                });
-                posterDiv.append(statusBadge);
+                var info = card.find('.card__view');
+                if (info.length) {
+                    info.append('<div class="card__quality">' + item.status + '</div>');
+                }
             }
             
-            card.append(posterDiv);
+            // Сохраняем данные в карточке
+            card.data('item', item);
+            card.data('title_ru', titleRuClean);
+            card.data('title_en', titleEn);
+            card.data('year', year);
+            card.data('media_type', mediaType);
             
-            // Название
-            var titleDiv = $('<div></div>');
-            titleDiv.text(titleRu);
-            titleDiv.css({
-                padding: '10px 8px',
-                fontSize: '13px',
-                lineHeight: '1.3',
-                color: '#fff',
-                textAlign: 'center',
-                minHeight: '50px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden'
+            // Обычный клик - открыть фильм
+            card.on('hover:enter', function() {
+                console.log('[Rezka] Opening:', titleRu);
+                comp.open(titleRuClean, titleEn, year, mediaType);
             });
             
-            card.append(titleDiv);
-            
-            // Долгое нажатие - ПРАВИЛЬНАЯ реализация
-            var pressStartTime = 0;
-            var longPressThreshold = 1000; // 1 секунда
-            var isPressing = false;
-            
-            // Hover эффекты
+            // Focus/Blur для подсветки
             card.on('hover:focus', function() {
-                // Убираем подсветку со всех карточек
-                $('.rezka-card').css({
-                    'transform': 'scale(1)',
-                    'box-shadow': 'none',
-                    'z-index': '1'
-                });
-                
-                // Подсвечиваем текущую
-                card.css({
-                    'transform': 'scale(1.05)',
-                    'box-shadow': '0 8px 20px rgba(255,255,255,0.3)',
-                    'z-index': '10'
-                });
-                
-                // Запоминаем время начала фокуса
-                pressStartTime = Date.now();
-                isPressing = true;
+                last_item = item;
+                card.addClass('focus');
             });
             
             card.on('hover:blur', function() {
-                // Убираем подсветку
-                card.css({
-                    'transform': 'scale(1)',
-                    'box-shadow': 'none',
-                    'z-index': '1'
-                });
-                
-                isPressing = false;
-                pressStartTime = 0;
-            });
-            
-            // Клик/Enter
-            card.on('hover:enter', function(e) {
-                if (e) e.preventDefault();
-                
-                if (!isPressing) return;
-                
-                var pressDuration = Date.now() - pressStartTime;
-                console.log('[Rezka] Press duration:', pressDuration, 'ms');
-                
-                // Если долгое нажатие - показываем меню управления
-                if (pressDuration >= longPressThreshold) {
-                    console.log('[Rezka] Long press - show manage menu');
-                    if (!isModalOpen) {
-                        comp.showManageModal(item);
-                    }
-                } else {
-                    // Короткое нажатие - открываем фильм
-                    console.log('[Rezka] Short press - open movie');
-                    if (!isModalOpen) {
-                        comp.openCard(titleRuClean, titleEn, year, mediaType);
-                    }
-                }
-                
-                isPressing = false;
+                card.removeClass('focus');
             });
             
             return card;
         };
         
-        // Открытие карточки в TMDB
-        comp.openCard = function(titleRu, titleEn, year, mediaType) {
+        comp.open = function(titleRu, titleEn, year, mediaType) {
             Lampa.Loading.start(function() {});
             
             var searchUrl = 'https://api.themoviedb.org/3/search/' + mediaType + 
@@ -281,20 +186,17 @@
             });
         };
         
-        // Меню управления фильмом
-        comp.showManageModal = function(item) {
+        comp.contextMenu = function(item) {
             if (isModalOpen) return;
             isModalOpen = true;
             
             var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
             var items = [];
             
-            // Опция для сериалов
             if (isTv) {
                 items.push({ title: '📺 Выставить серии', value: 'episodes' });
             }
             
-            // Перемещение
             if (category !== 'watching') {
                 items.push({ title: '▶ В Смотрю', value: 'move_watching' });
             }
@@ -314,7 +216,7 @@
                     isModalOpen = false;
                     
                     if (selected.value === 'episodes') {
-                        comp.showEpisodesModal(item);
+                        comp.showEpisodes(item);
                     } else {
                         comp.handleAction(selected.value, item);
                     }
@@ -325,8 +227,7 @@
             });
         };
         
-        // Меню выставления серий
-        comp.showEpisodesModal = function(item) {
+        comp.showEpisodes = function(item) {
             if (isModalOpen) return;
             isModalOpen = true;
             
@@ -388,8 +289,7 @@
                 items.push({
                     title: (ep.watched ? '✅' : '▫️') + ' Серия ' + ep.episode,
                     value: ep.episode,
-                    season: season,
-                    watched: ep.watched
+                    season: season
                 });
             });
             
@@ -398,9 +298,9 @@
                 items: items,
                 onSelect: function(sel) {
                     if (sel.value === 'all') {
-                        comp.markAllEpisodes(item, sel.season);
+                        comp.markAll(item, sel.season);
                     } else {
-                        comp.markEpisode(item, sel.season, sel.value);
+                        comp.markOne(item, sel.season, sel.value);
                     }
                 },
                 onBack: function() {
@@ -409,7 +309,7 @@
             });
         };
         
-        comp.markEpisode = function(item, season, episode) {
+        comp.markOne = function(item, season, episode) {
             Lampa.Loading.start(function() {});
             
             $.ajax({
@@ -425,13 +325,13 @@
                 },
                 error: function() {
                     Lampa.Loading.stop();
-                    Lampa.Noty.show('❌ Ошибка связи');
+                    Lampa.Noty.show('❌ Ошибка');
                     isModalOpen = false;
                 }
             });
         };
         
-        comp.markAllEpisodes = function(item, season) {
+        comp.markAll = function(item, season) {
             Lampa.Loading.start(function() {});
             
             $.ajax({
@@ -447,7 +347,7 @@
                 },
                 error: function() {
                     Lampa.Loading.stop();
-                    Lampa.Noty.show('❌ Ошибка связи');
+                    Lampa.Noty.show('❌ Ошибка');
                     isModalOpen = false;
                 }
             });
@@ -477,7 +377,7 @@
                     },
                     error: function() {
                         Lampa.Loading.stop();
-                        Lampa.Noty.show('❌ Ошибка связи');
+                        Lampa.Noty.show('❌ Ошибка');
                     }
                 });
             } else if (action.startsWith('move_')) {
@@ -494,7 +394,7 @@
                     },
                     error: function() {
                         Lampa.Loading.stop();
-                        Lampa.Noty.show('❌ Ошибка связи');
+                        Lampa.Noty.show('❌ Ошибка');
                     }
                 });
             }
@@ -508,13 +408,25 @@
         };
         
         comp.start = function() {
-            console.log('[Rezka] Start controller');
+            console.log('[Rezka] Start');
+            
+            var _this = this;
             
             Lampa.Controller.add('content', {
                 toggle: function() {
-                    Lampa.Controller.collectionSet(comp.html);
-                    if (cards.length > 0) {
-                        Lampa.Controller.collectionFocus(cards[0], comp.html);
+                    Lampa.Controller.collectionSet(html);
+                    Lampa.Controller.collectionFocus(false, html);
+                },
+                up: function() {
+                    if (Navigator.canmove('up')) {
+                        Navigator.move('up');
+                    } else {
+                        Lampa.Controller.toggle('head');
+                    }
+                },
+                down: function() {
+                    if (Navigator.canmove('down')) {
+                        Navigator.move('down');
                     }
                 },
                 left: function() {
@@ -527,22 +439,28 @@
                 right: function() {
                     Navigator.move('right');
                 },
-                up: function() {
-                    if (Navigator.canmove('up')) {
-                        Navigator.move('up');
-                        if (scroll) scroll.minus();
-                    } else {
-                        Lampa.Controller.toggle('head');
-                    }
-                },
-                down: function() {
-                    if (Navigator.canmove('down')) {
-                        Navigator.move('down');
-                        if (scroll) scroll.plus();
-                    }
-                },
                 back: function() {
                     Lampa.Activity.backward();
+                }
+            });
+            
+            // ВАЖНО: Добавляем обработчик кнопки Options/Menu
+            Lampa.Controller.listener.follow('toggle', function(e) {
+                if (e.name === 'content') {
+                    // Переопределяем метод для кнопки меню
+                    if (Lampa.Controller.enabled().name === 'content') {
+                        // Кнопка Options (обычно это долгое нажатие OK или отдельная кнопка)
+                        $(document).off('keydown.rezka_menu').on('keydown.rezka_menu', function(event) {
+                            // Кнопка "Options" или "Menu" на пульте (код может отличаться)
+                            // Обычно это коды: 93, 403, 457
+                            if (event.keyCode === 93 || event.keyCode === 403 || event.keyCode === 457) {
+                                event.preventDefault();
+                                if (last_item && !isModalOpen) {
+                                    comp.contextMenu(last_item);
+                                }
+                            }
+                        });
+                    }
                 }
             });
             
@@ -551,25 +469,26 @@
         
         comp.pause = function() {
             Lampa.Controller.clear();
+            $(document).off('keydown.rezka_menu');
         };
         
         comp.stop = function() {};
         
         comp.destroy = function() {
             Lampa.Controller.clear();
+            $(document).off('keydown.rezka_menu');
             if (scroll) scroll.destroy();
-            comp.html.remove();
-            cards = [];
+            html.remove();
         };
         
         comp.render = function() {
-            return comp.html;
+            return html;
         };
         
         return comp;
     }
     
-    // Регистрация компонентов
+    // Регистрация
     function init() {
         console.log('[Rezka] Init');
         
@@ -578,28 +497,16 @@
             return;
         }
         
-        // Регистрируем три компонента
-        Lampa.Component.add('rezka_watching', function(obj) {
-            return RezkaCategory('watching');
-        });
-        
-        Lampa.Component.add('rezka_later', function(obj) {
-            return RezkaCategory('later');
-        });
-        
-        Lampa.Component.add('rezka_watched', function(obj) {
-            return RezkaCategory('watched');
-        });
+        Lampa.Component.add('rezka_watching', function() { return new RezkaCategory('watching'); });
+        Lampa.Component.add('rezka_later', function() { return new RezkaCategory('later'); });
+        Lampa.Component.add('rezka_watched', function() { return new RezkaCategory('watched'); });
         
         console.log('[Rezka] Components registered');
         
-        // Добавляем три пункта в меню
         setTimeout(function() {
-            var menu = $('.menu .menu__list').eq(0);
-            
-            // Удаляем старые пункты если есть
             $('[data-action^="rezka_"]').remove();
             
+            var menu = $('.menu .menu__list').eq(0);
             var items = [
                 { action: 'rezka_watching', component: 'rezka_watching', icon: '▶', text: 'Смотрю' },
                 { action: 'rezka_later', component: 'rezka_later', icon: '⏳', text: 'Позже' },
@@ -617,21 +524,16 @@
                 menuItem.on('hover:enter', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('[Rezka] Opening:', item.component);
-                    Lampa.Activity.push({
-                        component: item.component,
-                        page: 1
-                    });
+                    Lampa.Activity.push({ component: item.component, page: 1 });
                 });
                 
                 menu.append(menuItem);
             });
             
-            console.log('[Rezka] Menu items added');
+            console.log('[Rezka] Menu added');
         }, 1000);
     }
     
-    // Запуск
     if (window.Lampa && Lampa.Listener) {
         Lampa.Listener.follow('app', function(e) {
             if (e.type === 'ready') {
