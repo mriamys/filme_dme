@@ -9,22 +9,17 @@
 </head>
 <body>
 
-    <div class="top-bar">
-        <button class="sort-btn" onclick="toggleSortMenu()">⇅ Сортировка</button>
-    </div>
-
-    <div id="sort-menu" class="sort-menu" style="display: none;">
-        <div class="sort-item active" onclick="applySort('added_desc', this)">📅 Добавление (Новые)</div>
-        <div class="sort-item" onclick="applySort('added_asc', this)">📅 Добавление (Старые)</div>
-        <div class="sort-item" onclick="applySort('year_desc', this)">🎬 Год выпуска (Новые)</div>
-        <div class="sort-item" onclick="applySort('year_asc', this)">🎬 Год выпуска (Старые)</div>
-        <div class="sort-item" onclick="applySort('title', this)">🔤 По названию (А-Я)</div>
-    </div>
-    <div id="sort-overlay" class="sort-overlay" style="display: none;" onclick="toggleSortMenu()"></div>
-
     <div id="search-ui" class="search-box">
         <input type="search" id="q" placeholder="Поиск сериалов..." oninput="doSearch(this.value)" autocomplete="off">
         <div id="search-results"></div>
+    </div>
+
+    <div id="toolbar" class="toolbar" style="display: flex; justify-content: flex-end; padding: 10px 15px;">
+        <select id="sort-select" onchange="changeSort(this.value)" class="sort-select">
+            <option value="added">По дате добавления</option>
+            <option value="year">По году выпуска</option>
+            <option value="popular">Популярные</option>
+        </select>
     </div>
 
     <div id="grid" class="grid"></div>
@@ -41,8 +36,6 @@
         </div>
 
         <div id="det-controls" class="manage-box" style="display:none;">
-            <a id="det-site-link" class="btn-action" style="background: #2f2f2f; text-decoration: none; display: flex; align-items: center; justify-content: center; color: #fff;" target="_blank">🔗 На сайт</a>
-            
             <button class="btn-action btn-watch" onclick="moveMovie('watching')">В Смотрю</button>
             <button class="btn-action btn-later" onclick="moveMovie('later')">В Позже</button>
             <button class="btn-action btn-done" onclick="moveMovie('watched')">В Архив</button>
@@ -56,16 +49,28 @@
 
     <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('watching', this)">
-            <span class="tab-icon">▶</span>Смотрю
+            <span class="tab-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </span>
+            Смотрю
         </button>
         <button class="tab-btn" onclick="switchTab('later', this)">
-            <span class="tab-icon">⏳</span>Позже
+            <span class="tab-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </span>
+            Позже
         </button>
         <button class="tab-btn" onclick="switchTab('watched', this)">
-            <span class="tab-icon">✅</span>Архив
+            <span class="tab-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </span>
+            Архив
         </button>
         <button class="tab-btn" onclick="openSearch(this)">
-            <span class="tab-icon">🔍</span>Поиск
+            <span class="tab-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            Поиск
         </button>
     </div>
 

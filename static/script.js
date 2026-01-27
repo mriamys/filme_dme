@@ -3,17 +3,20 @@ tg.expand();
 
 // Текущая выбранная категория
 let currentCategory = 'watching';
-// Кэш для сортировки
+// Кэш (теперь хранит то, что прислал сервер)
 let allLoadedItems = [];
-// Текущий метод сортировки
-let currentSort = 'added_desc';
+// Текущий метод сортировки (по умолчанию 'added')
+let currentSort = 'added';
 
 // Переключение вкладок
 async function switchTab(cat, btn) {
     currentCategory = cat;
     document.getElementById('search-ui').style.display = 'none';
     document.getElementById('grid').style.display = 'grid';
-    document.querySelector('.top-bar').style.display = 'flex'; // Показываем панель сортировки
+    
+    // Проверяем наличие панели перед обращением
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) topBar.style.display = 'flex';
     
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
@@ -25,7 +28,10 @@ async function switchTab(cat, btn) {
 function toggleSortMenu() {
     const menu = document.getElementById('sort-menu');
     const overlay = document.getElementById('sort-overlay');
-    if (menu.style.display === 'none') {
+    // Проверка на существование элементов (на случай другой верстки)
+    if (!menu || !overlay) return;
+
+    if (menu.style.display === 'none' || menu.style.display === '') {
         menu.style.display = 'block';
         overlay.style.display = 'block';
         // Подсветка текущей
@@ -41,41 +47,24 @@ function toggleSortMenu() {
 function applySort(type) {
     currentSort = type;
     toggleSortMenu();
-    renderSortedGrid();
+    // При смене сортировки теперь перезагружаем данные с сервера
+    loadGrid(currentCategory);
 }
 
-function sortItems(items) {
-    let sorted = [...items];
-    if (currentSort === 'added_desc') return sorted;
-    if (currentSort === 'added_asc') return sorted.reverse();
-    
-    if (currentSort === 'year_desc' || currentSort === 'year_asc') {
-        sorted.sort((a, b) => {
-            let ya = parseInt(a.year || (a.title.match(/\((\d{4})\)/) || [])[1] || 0);
-            let yb = parseInt(b.year || (b.title.match(/\((\d{4})\)/) || [])[1] || 0);
-            return currentSort === 'year_desc' ? yb - ya : ya - yb;
-        });
-    }
-    
-    if (currentSort === 'title') {
-        sorted.sort((a, b) => a.title.localeCompare(b.title));
-    }
-    
-    return sorted;
-}
-
+// Функция отрисовки (больше не сортирует, а просто выводит полученное)
 function renderSortedGrid() {
     const grid = document.getElementById('grid');
     grid.innerHTML = '';
     
-    const sorted = sortItems(allLoadedItems);
+    // Используем данные как есть (они уже отсортированы сервером)
+    const items = allLoadedItems;
     
-    if (!sorted || sorted.length === 0) {
+    if (!items || items.length === 0) {
         grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Список пуст</div>';
         return;
     }
     
-    sorted.forEach(item => {
+    items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'card';
         div.onclick = () => openDetails(item.url, item.title, item.poster);
@@ -98,8 +87,14 @@ function renderSortedGrid() {
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
+    
     try {
-        const res = await fetch(`/api/${cat}`);
+        // Преобразуем параметры сортировки для сервера
+        let serverSort = 'added';
+        if (currentSort.includes('year')) serverSort = 'year';
+        if (currentSort.includes('popular')) serverSort = 'popular';
+        
+        const res = await fetch(`/api/${cat}?sort=${serverSort}`);
         const data = await res.json();
         
         if (!data || data.length === 0) {
@@ -112,6 +107,7 @@ async function loadGrid(cat) {
         renderSortedGrid();
         
     } catch (e) {
+        console.error(e);
         grid.innerHTML = '<div style="grid-column:span 2; text-align:center;">Ошибка соединения</div>';
     }
 }
@@ -264,7 +260,11 @@ function openSearch(btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('grid').style.display = 'none';
-    document.querySelector('.top-bar').style.display = 'none'; // Скрываем сортировку в поиске
+    
+    // Скрываем панель сортировки в поиске
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) topBar.style.display = 'none';
+
     document.getElementById('search-ui').style.display = 'block';
     const input = document.getElementById('q');
     input.focus();
@@ -288,7 +288,9 @@ function doSearch(val) {
         data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'search-item';
-            let titleHTML = item.title;
+            
+            // Защита от undefined title
+            let titleHTML = item.title || 'Без названия';
             
             div.innerHTML = `
                 <div class="search-title">${titleHTML}</div>
@@ -305,7 +307,6 @@ function doSearch(val) {
 
 // ИСПРАВЛЕННАЯ ФУНКЦИЯ ДОБАВЛЕНИЯ
 async function addFav(id, cat) {
-    // Пытаемся извлечь ID, если это ссылка
     let postId = id;
     const match = String(id).match(/\/(\d+)(?:-|\.)/);
     if (match) {
@@ -330,4 +331,5 @@ async function addFav(id, cat) {
     }
 }
 
+// Инициализация
 loadGrid('watching');
