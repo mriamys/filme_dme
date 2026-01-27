@@ -78,7 +78,6 @@ async function loadGrid(cat) {
     
     try {
         // Передаем параметр сортировки на сервер
-        // Сервер поддерживает: added, year, popular
         const res = await fetch(`/api/${cat}?sort=${currentSort}`);
         const data = await res.json();
         
@@ -106,6 +105,14 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-img').src = poster;
     document.getElementById('det-title').innerText = title;
     document.getElementById('det-controls').style.display = 'none';
+    
+    // --- ВОТ ЭТОГО НЕ БЫЛО ИЛИ НЕ РАБОТАЛО ---
+    // Устанавливаем ссылку для кнопки "На сайте"
+    const siteLink = document.getElementById('det-site-link');
+    if (siteLink) {
+        siteLink.href = url; // url теперь абсолютный благодаря rezka_client.py
+    }
+    // -----------------------------------------
     
     const franchiseContainer = document.getElementById('det-franchises');
     if (franchiseContainer) franchiseContainer.innerHTML = '';

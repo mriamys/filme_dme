@@ -36,8 +36,12 @@ class RezkaClient:
         self.origin: str = base_url or os.getenv("REZKA_DOMAIN", "https://hdrezka.me")
 
     def auth(self) -> bool:
+        """Авторизация. Если уже залогинены, делаем ping-проверку (опционально) или просто возвращаем True."""
+        # Можно добавить принудительную проверку, но пока доверяем флагу,
+        # сбрасывая его при ошибках получения данных.
         if self.is_logged_in:
             return True
+            
         try:
             print("🔑 Попытка авторизации...")
             headers = {"X-Requested-With": "XMLHttpRequest"}
@@ -195,10 +199,6 @@ class RezkaClient:
         if not self.auth():
             return {"error": "Auth failed"}
         try:
-            # Убедимся, что URL полный
-            if url and not url.startswith("http"):
-                url = urljoin(self.origin, url)
-
             r = self.session.get(url)
             try:
                 parsed = urlparse(r.url)
@@ -350,6 +350,9 @@ class RezkaClient:
         except Exception as e:
             return {"error": str(e)}
 
+    # ------------------------
+    # Работа с закладками
+    # ------------------------
     def get_category_items(self, cat_id: str) -> List[Dict[str, Any]]:
         return self.get_category_items_paginated(cat_id, max_pages=1)
 
@@ -381,11 +384,16 @@ class RezkaClient:
             return False
 
     def get_category_items_paginated(self, cat_id: str, max_pages: int = 5, sort_by: str = "added") -> List[Dict[str, Any]]:
+        """
+        Собирает элементы с поддержкой серверной сортировки и АВТО-РЕЛОГИНОМ при потере сессии.
+        """
+        # Попытка выполнить запрос до 2-х раз (если сессия протухла, пробуем перезайти)
         for attempt in range(2):
             all_items: List[Dict[str, Any]] = []
             seen_ids: set[str] = set()
             
             if not self.auth():
+                # Если авторизация не прошла, и это была первая попытка, пробуем еще раз в след. итерации
                 if attempt == 0:
                      self.is_logged_in = False
                      continue
@@ -397,6 +405,9 @@ class RezkaClient:
             elif sort_by == "popular":
                 filter_param = "filter=popular"
             
+            # Если это ретрай после перелогина, сбрасываем состояние
+            success_fetch = False 
+            
             for page in range(1, max_pages + 1):
                 try:
                     url_page = f"{self.origin}/favorites/{cat_id}/"
@@ -404,13 +415,16 @@ class RezkaClient:
                         url_page = f"{url_page}page/{page}/"
                     
                     url_page = f"{url_page}?{filter_param}"
+                    print(f"DEBUG: Запрос {url_page}")
                     
                     r = self.session.get(url_page)
                     soup = BeautifulSoup(r.text, "html.parser")
                     items_page: List[Dict[str, Any]] = []
                     
+                    # Если страница вернула форму логина или нет контента
                     if soup.find("input", {"name": "login_name"}) or "Авторизация" in r.text:
-                         break 
+                         print("DEBUG: Обнаружена страница входа вместо контента")
+                         break # Выходим из цикла страниц, попадем в проверку success_fetch
 
                     for item in soup.find_all(class_="b-content__inline_item"):
                         try:
@@ -427,16 +441,11 @@ class RezkaClient:
                             if match_year:
                                 year = match_year.group(1)
 
-                            # ИСПРАВЛЕНИЕ: Делаем ссылку абсолютной
-                            raw_url = link.get("href") if link else ""
-                            if raw_url and not raw_url.startswith("http"):
-                                raw_url = urljoin(self.origin, raw_url)
-
                             items_page.append(
                                 {
                                     "id": item_id,
                                     "title": full_title,
-                                    "url": raw_url,
+                                    "url": link.get("href") if link else "",
                                     "poster": img.get("src") if img else "",
                                     "status": status.get_text(strip=True) if status else "",
                                     "year": year
@@ -447,22 +456,31 @@ class RezkaClient:
                             continue
                     
                     if items_page:
+                        success_fetch = True
                         all_items.extend(items_page)
                     else:
-                        break
+                        # Если на первой странице пусто и мы уверены, что там что-то должно быть
+                        if page == 1:
+                            pass # Может быть реально пусто
+                        break # Если просто кончились страницы
                         
                 except Exception as e:
                     print(f"ERROR Fetching page: {e}")
                     break
             
+            # Если мы получили элементы ИЛИ если мы явно получили пустой список (но запрос прошел успешно)
+            # считаем что все ок.
+            # НО: если элементов 0 и это первая попытка, возможно сессия слетела "тихо".
             if all_items:
                 return all_items
             
+            # Если 0 элементов, попробуем сбросить сессию и повторить
             if attempt == 0:
                 print("🔄 Получено 0 элементов. Возможно, истекла сессия. Переавторизация...")
                 self.is_logged_in = False
+                # Цикл продолжится, вызовет auth() заново
             else:
-                return [] 
+                return [] # Вторая попытка тоже пустая, значит реально пусто
 
         return []
 
@@ -544,12 +562,7 @@ class RezkaClient:
                     anchor = li.find("a")
                     if not anchor:
                         continue
-                    
-                    # ИСПРАВЛЕНИЕ: Делаем ссылку абсолютной
                     url = anchor.get("href")
-                    if url and not url.startswith("http"):
-                        url = urljoin(self.origin, url)
-
                     item_id = anchor.get("data-id") or li.get("data-id")
                     if not item_id and url:
                         match = re.search(r'/(\d+)(?:-|\.)', url)
@@ -670,10 +683,6 @@ class RezkaClient:
                         continue
                     title = link.get_text(strip=True)
                     url = link.get("href")
-                    # ИСПРАВЛЕНИЕ: Делаем ссылку абсолютной для франшиз
-                    if url and not url.startswith("http"):
-                        url = urljoin(self.origin, url)
-
                     item_id = block.get("data-id")
                     info = block.find(class_="misc")
                     misc_text = info.get_text(strip=True) if info else ""
