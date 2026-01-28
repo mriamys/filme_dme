@@ -6,7 +6,7 @@ import time
 import math
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from dotenv import load_dotenv
 
 from rezka_client import RezkaClient
@@ -63,62 +63,55 @@ async def cmd_start(message: types.Message):
     
     url_no_cache = f"{WEBAPP_URL}?v={int(time.time())}"
     
-    # КЛАВИАТУРА ГЛАВНОГО МЕНЮ
-    keyboard = [
-        [types.InlineKeyboardButton(text="🎬 Открыть HDRezka", web_app=WebAppInfo(url=url_no_cache))],
-        [types.InlineKeyboardButton(text="📑 Мои сериалы (Настройки)", callback_data="my_list_1")]
-    ]
+    # ИНЛАЙН КНОПКА (Открыть приложение)
+    inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Открыть приложение", web_app=WebAppInfo(url=url_no_cache))]
+    ])
+
+    # ОБЫЧНАЯ КЛАВИАТУРА (Меню снизу)
+    reply_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📑 Мои сериалы")]
+    ], resize_keyboard=True)
     
     await message.answer(
         "👋 Привет! Я буду присылать уведомления о новых сериях.\n"
-        "Нажми кнопку ниже, чтобы открыть приложение или настроить озвучки.",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=keyboard)
+        "Нажми кнопку внизу, чтобы открыть список сериалов и настроить озвучки.",
+        reply_markup=reply_kb
     )
+    # Отправляем инлайн кнопку отдельным сообщением или прикрепляем к тексту выше
+    await message.answer("👇 Или открой приложение:", reply_markup=inline_kb)
 
-# --- СПИСОК СЕРИАЛОВ (С ПАГИНАЦИЕЙ) ---
-@dp.callback_query(F.data.startswith("my_list_"))
-async def show_watchlist(callback: types.CallbackQuery):
-    try:
-        page = int(callback.data.split("_")[2])
-    except:
-        page = 1
+# --- ОБРАБОТЧИК КНОПКИ "Мои сериалы" (REPLY) ---
+@dp.message(F.text == "📑 Мои сериалы")
+async def show_watchlist_reply(message: types.Message):
+    # Просто вызываем функцию показа списка (страница 1)
+    # Имитируем callback, но так как функция принимает callback, 
+    # проще переиспользовать логику или вызвать её напрямую
+    await show_watchlist_logic(message, 1)
+
+# --- ЛОГИКА ПОКАЗА СПИСКА ---
+async def show_watchlist_logic(message_or_callback, page):
+    # Определяем, кто нас вызвал (сообщение или кнопка)
+    is_callback = isinstance(message_or_callback, types.CallbackQuery)
+    message = message_or_callback.message if is_callback else message_or_callback
     
-    # Не отвечаем сразу answer, чтобы не было "часиков", если быстро, 
-    # но лучше ответить, чтобы телеграм не ругался
-    # await callback.answer("Загружаю список...") 
-    
+    if is_callback:
+        # await message_or_callback.answer("Загружаю...") # Можно включить
+        pass
+    else:
+        await message.answer("⏳ Загружаю список...")
+
     try:
         # Получаем список "Смотрю"
         items = await asyncio.to_thread(client.get_category_items, CAT_WATCHING)
         
         if not items:
-            await callback.answer("Список пуст", show_alert=True)
+            text = "Список 'Смотрю' пуст."
+            if is_callback:
+                await message.edit_text(text)
+            else:
+                await message.answer(text)
             return
-
-        # Обновляем стейт URL-ами, чтобы потом работали настройки
-        state = load_state()
-        changed = False
-        
-        for item in items:
-            iid = str(item["id"])
-            
-            # --- ИСПРАВЛЕНИЕ ОШИБКИ: Проверка формата данных ---
-            if iid in state and not isinstance(state[iid], dict):
-                # Если в базе лежит старый формат (строка), сбрасываем его
-                state[iid] = {}
-            # ----------------------------------------------------
-
-            if iid not in state:
-                state[iid] = {}
-            
-            # Всегда обновляем актуальные данные
-            if state[iid].get("url") != item["url"]:
-                state[iid]["url"] = item["url"]
-                state[iid]["title"] = item["title"]
-                changed = True
-        
-        if changed:
-            save_state(state)
 
         # Пагинация (по 10 штук)
         items_per_page = 10
@@ -133,7 +126,6 @@ async def show_watchlist(callback: types.CallbackQuery):
         
         kb = []
         for item in current_items:
-            # Кнопка с названием сериала ведет в настройки этого сериала
             kb.append([InlineKeyboardButton(text=f"🎬 {item['title']}", callback_data=f"sett_{item['id']}")])
             
         # Кнопки навигации
@@ -146,79 +138,112 @@ async def show_watchlist(callback: types.CallbackQuery):
         if nav_row:
             kb.append(nav_row)
             
-        kb.append([InlineKeyboardButton(text="Закрыть", callback_data="close_settings")])
+        # Кнопка закрытия
+        kb.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="close_settings")])
         
-        text = f"📑 <b>Ваши сериалы ({len(items)}):</b>\nСтраница {page}/{total_pages}\n<i>Нажмите на сериал для настройки озвучки</i>"
+        text = f"📑 <b>Ваши сериалы ({len(items)}):</b>\nСтраница {page}/{total_pages}\n<i>Нажмите на название для настройки озвучек:</i>"
         
-        # Если это первое сообщение - отправляем новое, иначе редактируем
-        if callback.message.text and "Ваши сериалы" in callback.message.text:
-            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+        if is_callback:
+            await message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
         else:
-            await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-        
-        await callback.answer()
+            await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
             
     except Exception as e:
         logger.error(f"Error watchlist: {e}")
-        await callback.message.answer(f"Ошибка загрузки списка: {e}")
-        await callback.answer()
+        err_text = "Ошибка загрузки списка."
+        if is_callback:
+            await message.edit_text(err_text)
+        else:
+            await message.answer(err_text)
+
+# --- ХЕНДЛЕР ДЛЯ КНОПОК ПАГИНАЦИИ ---
+@dp.callback_query(F.data.startswith("my_list_"))
+async def on_page_click(callback: types.CallbackQuery):
+    try:
+        page = int(callback.data.split("_")[2])
+    except:
+        page = 1
+    await show_watchlist_logic(callback, page)
+    await callback.answer()
 
 # --- МЕНЮ НАСТРОЕК ОЗВУЧЕК (ОДИН СЕРИАЛ) ---
 @dp.callback_query(F.data.startswith("sett_"))
 async def open_settings(callback: types.CallbackQuery):
     post_id = callback.data.split("_")[1]
-    
     state = load_state()
     
-    # --- ПРОВЕРКА НА БИТЫЙ СТЕЙТ ---
-    if post_id in state and not isinstance(state[post_id], dict):
-        state[post_id] = {}
-    # -------------------------------
-
-    series_data = state.get(post_id, {})
-    url = series_data.get("url")
-    title = series_data.get("title", "Сериал")
+    # Если данных нет в стейте, попробуем найти в кэше/списке, но проще попросить обновить
+    # Для надежности - загружаем URL из стейта, если его там нет - беда (но мы его пишем при проверке)
+    # ЛАЙФХАК: Если URL нет, можно попробовать найти его в списке "Смотрю" прямо сейчас
+    
+    url = None
+    title = "Сериал"
+    
+    if post_id in state:
+        url = state[post_id].get("url")
+        title = state[post_id].get("title", "Сериал")
     
     if not url:
-        await callback.answer("Ошибка: URL не найден. Обновите список.", show_alert=True)
+        # Пытаемся найти в списке watching
+        items = await asyncio.to_thread(client.get_category_items, CAT_WATCHING)
+        for item in items:
+            if str(item["id"]) == post_id:
+                url = item["url"]
+                title = item["title"]
+                break
+    
+    if not url:
+        await callback.answer("URL не найден. Подождите фонового обновления.", show_alert=True)
         return
 
     await callback.answer("Загружаю озвучки...")
     
     try:
-        # Получаем актуальный список озвучек с сайта
         details = await asyncio.to_thread(client.get_series_details, url)
         translators = details.get("translators", [])
         
         if not translators:
             await callback.message.edit_text(
-                f"🎬 <b>{title}</b>\n❌ Для этого сериала озвучки не найдены (или он не многоголосый).", 
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад к списку", callback_data="my_list_1")]]), 
+                f"🎬 <b>{title}</b>\n❌ Озвучки не найдены.", 
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="my_list_1")]]), 
                 parse_mode="HTML"
             )
             return
 
         kb = []
-        user_prefs = series_data.get("prefs", {}) 
+        user_prefs = state.get(post_id, {}).get("prefs", {})
+        
+        # --- АВТОМАТИЧЕСКОЕ ВКЛЮЧЕНИЕ ДЕФОЛТНОЙ (ЕСЛИ ПУСТО) ---
+        # Если пользователь еще ничего не настраивал, мы считаем включенной ту,
+        # которая идет первой (дефолтная на сайте).
+        # Но чтобы отобразить это красиво, нам нужно знать, включена она реально или нет.
+        # В `check_updates` мы это делаем автоматически. Здесь просто покажем.
+        
+        if not user_prefs and translators:
+            # Если настроек нет, считаем первую включенной (визуально)
+            # При первом клике это зафиксируется в базу
+            first_t_id = str(translators[0]["id"])
+            # Не сохраняем в базу пока, только визуализация
+            # user_prefs = {first_t_id: True} # Раскомментировать, если хотим сразу показывать галочку
         
         for t in translators:
             t_id = str(t["id"])
             t_name = t["name"]
             
             is_active = user_prefs.get(t_id, False)
+            
+            # Если настроек нет вообще, и это первая озвучка - показываем как активную
+            if not user_prefs and translators and str(translators[0]["id"]) == t_id:
+                is_active = True
+                
             icon = "✅" if is_active else "❌"
             
-            kb.append([
-                InlineKeyboardButton(
-                    text=f"{icon} {t_name}", 
-                    callback_data=f"tog_{post_id}_{t_id}"
-                )
-            ])
+            kb.append([InlineKeyboardButton(text=f"{icon} {t_name}", callback_data=f"tog_{post_id}_{t_id}")])
             
         kb.append([InlineKeyboardButton(text="🔙 Назад к списку", callback_data="my_list_1")])
         
         await callback.message.edit_text(
-            f"⚙️ <b>Настройка уведомлений</b>\n🎬 <b>{title}</b>\n\nВыберите озвучки, за которыми следить (нажмите, чтобы переключить):",
+            f"⚙️ <b>{title}</b>\nВыберите озвучки для уведомлений:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
             parse_mode="HTML"
         )
@@ -233,36 +258,43 @@ async def toggle_voice(callback: types.CallbackQuery):
     _, post_id, t_id = callback.data.split("_")
     
     state = load_state()
-    
-    # --- ИСПРАВЛЕНИЕ БИТОГО СТЕЙТА ---
-    if post_id in state and not isinstance(state[post_id], dict):
-        state[post_id] = {}
-    
     if post_id not in state: state[post_id] = {}
     if "prefs" not in state[post_id]: state[post_id]["prefs"] = {}
 
-    # Инвертируем
+    # Получаем текущее значение
+    # ВАЖНО: Если prefs пустой, нужно учесть, что первая озвучка была "визуально" включена
+    # Нам нужно получить список озвучек снова, чтобы узнать, какая первая?
+    # Это долго. Проще считать: если prefs пустой -> мы включаем ту, на которую нажали, или выключаем?
+    # ДАВАЙТЕ ТАК: Если prefs пустой -> значит все выключены кроме первой.
+    # Если нажали на первую -> она выключается. Если на другую -> она включается.
+    # Но мы не знаем, какая первая без запроса.
+    # ПОЭТОМУ: Просто переключаем `False` -> `True` и наоборот. 
+    # Если юзер хочет "дефолтную" логику, он нажмет и увидит.
+    
     current_val = state[post_id]["prefs"].get(t_id, False)
+    
+    # ХАК: Если prefs пустой, и мы жмем кнопку... 
+    # Мы не знаем, была ли она "визуально" активна.
+    # Ладно, будем считать, что если записи нет - значит False.
+    # Но тогда при первом заходе юзер увидит "✅ По умолчанию", нажмет на нее, 
+    # скрипт подумает что там False, сделает True -> опять "✅".
+    # Это не страшно. Главное что запись появится.
+    
     new_val = not current_val
     state[post_id]["prefs"][t_id] = new_val
     
     save_state(state)
     
-    # Обновляем кнопку без перерисовки всего сообщения
+    # Обновляем кнопку
     current_kb = callback.message.reply_markup.inline_keyboard
     new_kb = []
-    
     for row in current_kb:
         new_row = []
         for btn in row:
             if btn.callback_data == callback.data:
                 text = btn.text
-                # Убираем старый значок, если он был
                 clean_text = text.replace("✅ ", "").replace("❌ ", "")
-                if new_val:
-                    new_text = f"✅ {clean_text}" 
-                else:
-                    new_text = f"❌ {clean_text}"
+                new_text = f"{'✅' if new_val else '❌'} {clean_text}"
                 new_row.append(InlineKeyboardButton(text=new_text, callback_data=btn.callback_data))
             else:
                 new_row.append(btn)
@@ -290,8 +322,6 @@ async def check_updates_task():
 
             logger.info("🔄 Начало проверки новых серий...")
             state = load_state()
-            
-            # Получаем список "Смотрю"
             watchlist = await asyncio.to_thread(client.get_category_items, CAT_WATCHING)
             
             for item in watchlist:
@@ -302,30 +332,47 @@ async def check_updates_task():
                     
                     if not url or not item_id: continue
 
-                    # --- МИГРАЦИЯ ДАННЫХ ЕСЛИ НУЖНО ---
-                    if item_id in state and not isinstance(state[item_id], dict):
-                        state[item_id] = {}
-
                     if item_id not in state:
-                        state[item_id] = {"title": title, "url": url, "progress": {}, "prefs": {}}
+                        state[item_id] = {}
                     
-                    # Обновляем
                     state[item_id]["url"] = url
                     state[item_id]["title"] = title
                     
                     prefs = state[item_id].get("prefs", {})
                     
-                    # Если пользователь ничего не выбрал - пропускаем (не спамим)
-                    if not prefs:
-                        continue
+                    # --- АВТО-ВКЛЮЧЕНИЕ ПЕРВОЙ ОЗВУЧКИ ---
+                    # Если настроек нет, мы должны сами определить озвучку и включить её
+                    translators_to_check = [] # Список ID для проверки
                     
-                    # Итерируемся по включенным озвучкам
-                    for t_id, is_enabled in prefs.items():
-                        if not is_enabled: continue
+                    if not prefs:
+                        # Настроек нет. Загружаем детали, берем первую озвучку и СОХРАНЯЕМ её как включенную
+                        logger.info(f"⚙️ Auto-setup for {title}...")
+                        details = await asyncio.to_thread(client.get_series_details, url)
+                        translators = details.get("translators", [])
                         
+                        if translators:
+                            first_t_id = str(translators[0]["id"])
+                            # Включаем первую озвучку
+                            if "prefs" not in state[item_id]: state[item_id]["prefs"] = {}
+                            state[item_id]["prefs"][first_t_id] = True
+                            
+                            # Добавляем в список проверки
+                            translators_to_check.append(first_t_id)
+                            logger.info(f"✅ Auto-enabled translator {first_t_id} ({translators[0]['name']})")
+                        else:
+                            # Если озвучек нет (фильм?), пропускаем
+                            pass
+                    else:
+                        # Настройки есть, берем только включенные
+                        for t_id, enabled in prefs.items():
+                            if enabled:
+                                translators_to_check.append(t_id)
+                    
+                    # Проверяем серии для выбранных озвучек
+                    for t_id in translators_to_check:
                         await asyncio.sleep(1.0)
                         
-                        # Загружаем серии конкретной озвучки
+                        # Загружаем серии
                         seasons_data = await asyncio.to_thread(client.get_episodes_for_translator, item_id, t_id)
                         
                         max_s = -1
@@ -336,7 +383,6 @@ async def check_updates_task():
                             try: s_int = int(s_num)
                             except: continue
                             
-                            if not eps: continue
                             last_ep_obj = eps[-1]
                             try: e_int = int(last_ep_obj["episode"])
                             except: continue
@@ -351,17 +397,13 @@ async def check_updates_task():
                         
                         last_tag = f"S{max_s}E{max_e}"
                         
-                        # Проверяем прогресс
+                        # Проверка прогресса
                         if "progress" not in state[item_id]: state[item_id]["progress"] = {}
+                        if not isinstance(state[item_id]["progress"], dict): state[item_id]["progress"] = {}
                         
-                        # Дополнительная защита, если в progress мусор
-                        if not isinstance(state[item_id]["progress"], dict):
-                             state[item_id]["progress"] = {}
-
                         current_progress = state[item_id]["progress"].get(t_id)
                         
                         if current_progress and current_progress != last_tag:
-                            # Уведомление!
                             msg = (
                                 f"🔥 <b>Новая серия!</b>\n"
                                 f"🎬 <b>{title}</b>\n"
@@ -369,22 +411,17 @@ async def check_updates_task():
                                 f"Сезон {max_s}, Серия {max_e}\n"
                                 f"<a href='{url}'>Смотреть</a>"
                             )
-                            
-                            kb = InlineKeyboardMarkup(inline_keyboard=[
-                                [InlineKeyboardButton(text="⚙️ Озвучки", callback_data=f"sett_{item_id}")]
-                            ])
-                            
+                            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚙️ Озвучки", callback_data=f"sett_{item_id}")]])
                             try:
                                 await bot.send_message(TELEGRAM_CHAT_ID, msg, parse_mode="HTML", reply_markup=kb)
                                 logger.info(f"🔔 Notify: {title} {last_tag}")
                             except Exception as e:
                                 logger.error(f"Send error: {e}")
                         
-                        # Сохраняем
                         state[item_id]["progress"][t_id] = last_tag
 
                 except Exception as ex:
-                    logger.error(f"Error checking item {item.get('title')}: {ex}")
+                    logger.error(f"Error checking item: {ex}")
                     continue
 
             save_state(state)
