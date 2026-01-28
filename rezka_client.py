@@ -37,8 +37,6 @@ class RezkaClient:
 
     def auth(self) -> bool:
         """Авторизация. Если уже залогинены, делаем ping-проверку (опционально) или просто возвращаем True."""
-        # Можно добавить принудительную проверку, но пока доверяем флагу,
-        # сбрасывая его при ошибках получения данных.
         if self.is_logged_in:
             return True
             
@@ -225,6 +223,31 @@ class RezkaClient:
             elif soup.find(id="post_id"):
                 post_id = soup.find(id="post_id").get("value")
             
+            # --- ПАРСИНГ ПЕРЕВОДЧИКОВ (ОЗВУЧЕК) ---
+            translators = []
+            translator_items = soup.find_all(class_="b-translator__item")
+            for t_item in translator_items:
+                t_id = t_item.get("data-translator_id")
+                # Название озвучки иногда в title, иногда в тексте
+                t_name = t_item.get("title") or t_item.get_text(strip=True)
+                # Картинка страны (флаг)
+                img = t_item.find("img")
+                if img:
+                    # Если есть картинка, текст может быть внутри или рядом
+                    t_name = t_item.get_text(strip=True) or t_item.get("title")
+                
+                if t_id:
+                    translators.append({"id": t_id, "name": t_name})
+            
+            # Если нет списка переводчиков, но есть один дефолтный
+            if not translators and post_id:
+                # Пытаемся найти активный ID
+                active_t = None
+                match_tid = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', html_text)
+                if match_tid: active_t = match_tid.group(1)
+                if active_t:
+                    translators.append({"id": active_t, "name": "По умолчанию"})
+
             franchises = []
             franchise_link = soup.find("a", class_="b-post__franchise_link_title")
             if not franchise_link:
@@ -245,11 +268,14 @@ class RezkaClient:
                         f_url = urljoin(self.origin, f_url)
                     franchises = self.get_franchise_items(f_url)
 
+            # --- СБОР СЕРИЙ ДЛЯ ТЕКУЩЕЙ (ДЕФОЛТНОЙ) ОЗВУЧКИ ---
             table_seasons = self._parse_schedule_table(soup)
             all_unique_episodes: Dict[str, Dict[str, Any]] = {}
             
+            # Используем существующую логику сбора для дефолтной страницы
             if post_id:
-                translator_id: Optional[str] = None
+                # ... (старый код сбора серий, оставлен для обратной совместимости API)
+                translator_id = None
                 match_tid = re.search(r'["\']translator_id["\']\s*:\s*(\d+)', html_text)
                 if match_tid:
                     translator_id = match_tid.group(1)
@@ -257,10 +283,13 @@ class RezkaClient:
                     active = soup.find(class_="b-translator__item active")
                     if active:
                         translator_id = active.get("data-translator_id")
+                
+                # Если переводчики есть, но активный не найден, берем первый
+                if not translator_id and translators:
+                    translator_id = translators[0]["id"]
+
                 season_ids = re.findall(r'data-tab_id=["\'](\d+)["\']', html_text)
-                season_ids = sorted(
-                    list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0
-                )
+                season_ids = sorted(list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0)
                 season_ids = [s for s in season_ids if s.isdigit() and int(s) < 200]
                 
                 if season_ids:
@@ -345,10 +374,82 @@ class RezkaClient:
                 "seasons": sorted_seasons, 
                 "poster": hq_poster, 
                 "post_id": post_id, 
-                "franchises": franchises
+                "franchises": franchises,
+                "translators": translators  # <-- Добавили список озвучек
             }
         except Exception as e:
             return {"error": str(e)}
+
+    # ----------------------------------------------------
+    # НОВЫЙ МЕТОД: Получение серий для конкретной озвучки
+    # ----------------------------------------------------
+    def get_episodes_for_translator(self, post_id: str, translator_id: str) -> Dict[str, Any]:
+        """
+        Запрашивает список серий для конкретного translator_id.
+        """
+        if not self.auth():
+            return {}
+        
+        all_unique_episodes: Dict[str, Dict[str, Any]] = {}
+        
+        # Запрашиваем информацию (пытаемся угадать, есть ли сезоны или все вместе)
+        # Обычно проще всего запросить action="get_episodes" без указания сезона, 
+        # но если сезонов много, сайт может вернуть только табы.
+        
+        # Стратегия: Сначала пробуем получить общий список
+        payload = {
+            "id": post_id,
+            "translator_id": translator_id,
+            "action": "get_episodes"
+        }
+        
+        try:
+            r = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=payload)
+            data = r.json()
+            
+            if not data.get("success"):
+                return {}
+
+            html_content = data.get("episodes") or data.get("seasons")
+            
+            # Проверяем, вернул ли он список сезонов (data-tab_id) внутри
+            season_ids = re.findall(r'data-tab_id=["\'](\d+)["\']', html_content)
+            
+            if season_ids:
+                # Если есть сезоны, нужно пройтись по каждому
+                unique_seasons = sorted(list(set(season_ids)), key=lambda x: int(x) if x.isdigit() else 0)
+                for s_id in unique_seasons:
+                    pl_season = {
+                        "id": post_id,
+                        "translator_id": translator_id,
+                        "season": s_id,
+                        "action": "get_episodes"
+                    }
+                    time.sleep(0.1)
+                    r_s = self.session.post(f"{self.origin}/ajax/get_cdn_series/", data=pl_season)
+                    d_s = r_s.json()
+                    if d_s.get("success"):
+                        h_s = d_s.get("episodes") or d_s.get("seasons")
+                        all_unique_episodes.update(self._parse_html_list(h_s, default_season=s_id))
+            else:
+                # Если сезонов нет, парсим то что пришло
+                all_unique_episodes.update(self._parse_html_list(html_content))
+                
+        except Exception as e:
+            print(f"Error getting translator episodes: {e}")
+            return {}
+
+        # Формируем красивый словарь seasons
+        final_seasons: Dict[str, List[Dict[str, Any]]] = {}
+        for _, ep_data in all_unique_episodes.items():
+            s_id = ep_data["s_id"]
+            if s_id not in final_seasons:
+                final_seasons[s_id] = []
+            clean_ep = ep_data.copy()
+            del clean_ep["s_id"]
+            final_seasons[s_id].append(clean_ep)
+            
+        return final_seasons
 
     # ------------------------
     # Работа с закладками
@@ -384,16 +485,11 @@ class RezkaClient:
             return False
 
     def get_category_items_paginated(self, cat_id: str, max_pages: int = 5, sort_by: str = "added") -> List[Dict[str, Any]]:
-        """
-        Собирает элементы с поддержкой серверной сортировки и АВТО-РЕЛОГИНОМ при потере сессии.
-        """
-        # Попытка выполнить запрос до 2-х раз (если сессия протухла, пробуем перезайти)
         for attempt in range(2):
             all_items: List[Dict[str, Any]] = []
             seen_ids: set[str] = set()
             
             if not self.auth():
-                # Если авторизация не прошла, и это была первая попытка, пробуем еще раз в след. итерации
                 if attempt == 0:
                      self.is_logged_in = False
                      continue
@@ -405,7 +501,6 @@ class RezkaClient:
             elif sort_by == "popular":
                 filter_param = "filter=popular"
             
-            # Если это ретрай после перелогина, сбрасываем состояние
             success_fetch = False 
             
             for page in range(1, max_pages + 1):
@@ -415,16 +510,13 @@ class RezkaClient:
                         url_page = f"{url_page}page/{page}/"
                     
                     url_page = f"{url_page}?{filter_param}"
-                    print(f"DEBUG: Запрос {url_page}")
                     
                     r = self.session.get(url_page)
                     soup = BeautifulSoup(r.text, "html.parser")
                     items_page: List[Dict[str, Any]] = []
                     
-                    # Если страница вернула форму логина или нет контента
                     if soup.find("input", {"name": "login_name"}) or "Авторизация" in r.text:
-                         print("DEBUG: Обнаружена страница входа вместо контента")
-                         break # Выходим из цикла страниц, попадем в проверку success_fetch
+                         break 
 
                     for item in soup.find_all(class_="b-content__inline_item"):
                         try:
@@ -441,11 +533,15 @@ class RezkaClient:
                             if match_year:
                                 year = match_year.group(1)
 
+                            raw_url = link.get("href") if link else ""
+                            if raw_url and not raw_url.startswith("http"):
+                                raw_url = urljoin(self.origin, raw_url)
+
                             items_page.append(
                                 {
                                     "id": item_id,
                                     "title": full_title,
-                                    "url": link.get("href") if link else "",
+                                    "url": raw_url,
                                     "poster": img.get("src") if img else "",
                                     "status": status.get_text(strip=True) if status else "",
                                     "year": year
@@ -459,28 +555,21 @@ class RezkaClient:
                         success_fetch = True
                         all_items.extend(items_page)
                     else:
-                        # Если на первой странице пусто и мы уверены, что там что-то должно быть
                         if page == 1:
-                            pass # Может быть реально пусто
-                        break # Если просто кончились страницы
+                            pass 
+                        break 
                         
                 except Exception as e:
                     print(f"ERROR Fetching page: {e}")
                     break
             
-            # Если мы получили элементы ИЛИ если мы явно получили пустой список (но запрос прошел успешно)
-            # считаем что все ок.
-            # НО: если элементов 0 и это первая попытка, возможно сессия слетела "тихо".
             if all_items:
                 return all_items
             
-            # Если 0 элементов, попробуем сбросить сессию и повторить
             if attempt == 0:
-                print("🔄 Получено 0 элементов. Возможно, истекла сессия. Переавторизация...")
                 self.is_logged_in = False
-                # Цикл продолжится, вызовет auth() заново
             else:
-                return [] # Вторая попытка тоже пустая, значит реально пусто
+                return [] 
 
         return []
 
@@ -563,6 +652,9 @@ class RezkaClient:
                     if not anchor:
                         continue
                     url = anchor.get("href")
+                    if url and not url.startswith("http"):
+                        url = urljoin(self.origin, url)
+
                     item_id = anchor.get("data-id") or li.get("data-id")
                     if not item_id and url:
                         match = re.search(r'/(\d+)(?:-|\.)', url)
@@ -683,6 +775,9 @@ class RezkaClient:
                         continue
                     title = link.get_text(strip=True)
                     url = link.get("href")
+                    if url and not url.startswith("http"):
+                        url = urljoin(self.origin, url)
+
                     item_id = block.get("data-id")
                     info = block.find(class_="misc")
                     misc_text = info.get_text(strip=True) if info else ""

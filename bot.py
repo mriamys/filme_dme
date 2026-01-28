@@ -2,18 +2,16 @@ import asyncio
 import json
 import logging
 import os
-import time  # Добавлено для генерации уникальной ссылки
-from aiogram import Bot, Dispatcher, types
+import time
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import WebAppInfo
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
-# Импортируем класс клиента из файла rezka_client.py
 from rezka_client import RezkaClient
 
 load_dotenv()
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -24,18 +22,15 @@ CAT_WATCHING = os.getenv("REZKA_CAT_WATCHING")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STATE_FILE = "series_state.json"
 
-# --- ИНИЦИАЛИЗАЦИЯ ОБЪЕКТОВ ---
 if not BOT_TOKEN:
     logger.error("❌ Ошибка: Не задан TELEGRAM_BOT_TOKEN в .env")
 
-# 1. Создаем клиент сайта
+# Инициализируем клиент (методы из предыдущего файла должны быть доступны)
 client = RezkaClient()
-
-# 2. Создаем бота
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 dp = Dispatcher()
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+# --- СОСТОЯНИЕ (База данных в файле) ---
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -52,34 +47,22 @@ def save_state(state):
     except Exception as e:
         logger.error(f"Ошибка сохранения состояния: {e}")
 
-# --- ХЕНДЛЕРЫ БОТА ---
+# --- COMMAND START ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     global TELEGRAM_CHAT_ID
-    
     user_id = str(message.from_user.id)
+    
+    # Если в .env задан ID, пускаем только его
     env_id = os.getenv("TELEGRAM_CHAT_ID")
-
-    # --- ПРОВЕРКА ДОСТУПА ---
-    # 1. Если ID жестко задан в .env, проверяем совпадение
     if env_id and user_id != str(env_id):
-        # Чужой пользователь - игнорируем
         return
 
-    # 2. Если ID не задан нигде, запоминаем первого написавшего
     if not TELEGRAM_CHAT_ID:
         TELEGRAM_CHAT_ID = user_id
-        logger.info(f"✅ Chat ID установлен (первый вход): {TELEGRAM_CHAT_ID}")
+        logger.info(f"✅ Chat ID установлен: {TELEGRAM_CHAT_ID}")
     
-    # 3. Если ID уже был запомнен ранее, но пишет другой человек
-    elif TELEGRAM_CHAT_ID != user_id:
-        return 
-    # ------------------------
-
-    # Добавляем метку времени к URL, чтобы сбросить кэш в Telegram WebApp
     url_no_cache = f"{WEBAPP_URL}?v={int(time.time())}"
-
-    # Кнопка для открытия WebApp
     markup = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="🎬 Открыть HDRezka", web_app=WebAppInfo(url=url_no_cache))]
     ])
@@ -89,115 +72,239 @@ async def cmd_start(message: types.Message):
         reply_markup=markup
     )
 
-# --- ФОНОВАЯ ЗАДАЧА (Нотифайер) ---
-async def check_updates_task():
-    """Периодически проверяет выход новых серий."""
-    if not bot:
+# --- МЕНЮ НАСТРОЕК ОЗВУЧЕК ---
+@dp.callback_query(F.data.startswith("sett_"))
+async def open_settings(callback: types.CallbackQuery):
+    post_id = callback.data.split("_")[1]
+    
+    state = load_state()
+    series_data = state.get(post_id, {})
+    url = series_data.get("url")
+    title = series_data.get("title", "Сериал")
+    
+    if not url:
+        await callback.answer("Ошибка: данные о сериале не найдены", show_alert=True)
         return
 
-    logger.info("⏳ Фоновая проверка обновлений запущена (интервал 12 часов)...")
+    await callback.answer("Загружаю список озвучек...")
+    
     try:
-        await asyncio.sleep(5)  # Даем время на старт
+        # Получаем актуальный список озвучек с сайта
+        details = await asyncio.to_thread(client.get_series_details, url)
+        translators = details.get("translators", [])
+        
+        if not translators:
+            await callback.message.answer(f"Для сериала '{title}' озвучки не найдены или он не многоголосый.")
+            return
 
-        while True:
-            # Проверяем, не была ли отменена задача (для Ctrl+C)
-            await asyncio.sleep(0.1)
+        kb = []
+        user_prefs = series_data.get("prefs", {}) # Сохраненные настройки {id: true/false}
+        
+        # Если настроек вообще нет, по умолчанию ничего не включено (или можно включить первую)
+        # Логика: показываем текущее состояние
+        
+        for t in translators:
+            t_id = str(t["id"])
+            t_name = t["name"]
             
-            try:
-                if not TELEGRAM_CHAT_ID:
-                    # Если ID чата нет, ждем
-                    await asyncio.sleep(30)
-                    continue
+            is_active = user_prefs.get(t_id, False)
+            icon = "✅" if is_active else "❌"
+            
+            # Кнопка переключения: tog_POSTID_TRANSLATORID
+            kb.append([
+                InlineKeyboardButton(
+                    text=f"{icon} {t_name}", 
+                    callback_data=f"tog_{post_id}_{t_id}"
+                )
+            ])
+            
+        kb.append([InlineKeyboardButton(text="Закрыть", callback_data="close_settings")])
+        
+        await callback.message.answer(
+            f"⚙️ <b>Настройка уведомлений</b>\n🎬 {title}\n\nВыберите озвучки, за которыми следить:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error settings: {e}")
+        await callback.message.answer("Ошибка при загрузке настроек.")
 
-                if not CAT_WATCHING:
-                    logger.warning("⚠️ Не задан REZKA_CAT_WATCHING")
-                    await asyncio.sleep(60)
-                    continue
+# --- ПЕРЕКЛЮЧЕНИЕ ОЗВУЧКИ ---
+@dp.callback_query(F.data.startswith("tog_"))
+async def toggle_voice(callback: types.CallbackQuery):
+    _, post_id, t_id = callback.data.split("_")
+    
+    state = load_state()
+    if post_id not in state:
+        state[post_id] = {}
+        
+    if "prefs" not in state[post_id]:
+        state[post_id]["prefs"] = {}
 
-                logger.info("🔄 Начало проверки новых серий...")
-                state = load_state()
-                
-                # Получаем список сериалов (запускаем синхронный код в отдельном потоке)
-                watchlist = await asyncio.to_thread(client.get_category_items, CAT_WATCHING)
-                
-                for item in watchlist:
-                    await asyncio.sleep(0.1) # Точка прерывания для Ctrl+C
+    # Инвертируем значение
+    current_val = state[post_id]["prefs"].get(t_id, False)
+    new_val = not current_val
+    state[post_id]["prefs"][t_id] = new_val
+    
+    save_state(state)
+    
+    # Обновляем кнопки "на лету" без переотправки сообщения
+    current_kb = callback.message.reply_markup.inline_keyboard
+    new_kb = []
+    
+    for row in current_kb:
+        new_row = []
+        for btn in row:
+            if btn.callback_data == callback.data:
+                text = btn.text
+                # Меняем иконку (первый символ)
+                if new_val:
+                    new_text = "✅" + text[1:]
+                else:
+                    new_text = "❌" + text[1:]
+                new_row.append(InlineKeyboardButton(text=new_text, callback_data=btn.callback_data))
+            else:
+                new_row.append(btn)
+        new_kb.append(new_row)
+            
+    await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=new_kb))
+    await callback.answer(f"{'Включено' if new_val else 'Выключено'}")
+
+@dp.callback_query(F.data == "close_settings")
+async def close_settings_handler(callback: types.CallbackQuery):
+    await callback.message.delete()
+
+# --- ФОНОВАЯ ЗАДАЧА ПРОВЕРКИ ---
+async def check_updates_task():
+    if not bot: return
+
+    logger.info("⏳ Фоновая проверка обновлений запущена (интервал 15 мин)...")
+    
+    # Ждем старта
+    await asyncio.sleep(5)
+
+    while True:
+        try:
+            if not TELEGRAM_CHAT_ID:
+                await asyncio.sleep(30)
+                continue
+
+            logger.info("🔄 Начало проверки новых серий...")
+            state = load_state()
+            
+            # Получаем список "Смотрю"
+            watchlist = await asyncio.to_thread(client.get_category_items, CAT_WATCHING)
+            
+            for item in watchlist:
+                try:
+                    url = item.get("url")
+                    title = item.get("title")
+                    item_id = str(item.get("id"))
                     
-                    try:
-                        url = item.get("url")
-                        title = item.get("title")
-                        item_id = item.get("id")
-                        
-                        if not url or not item_id: continue
+                    if not url or not item_id: continue
 
-                        # Загружаем детали
-                        details = await asyncio.to_thread(client.get_series_details, url)
-                        if not details or "seasons" not in details:
-                            continue
-
-                        seasons = details["seasons"]
-                        max_season = -1
-                        max_episode = -1
+                    # Если этого сериала нет в базе, добавляем
+                    if item_id not in state:
+                        state[item_id] = {
+                            "title": title,
+                            "url": url,
+                            "progress": {}, # { "translator_id": "S1E5" }
+                            "prefs": {}     # { "translator_id": True }
+                        }
+                    
+                    # Обновляем на всякий случай
+                    state[item_id]["url"] = url
+                    state[item_id]["title"] = title
+                    
+                    # Получаем настройки пользователя
+                    prefs = state[item_id].get("prefs", {})
+                    
+                    # Если пользователь НЕ выбрал ни одной озвучки, пропускаем
+                    # (Или можно сделать логику "если пусто - следить за дефолтной", 
+                    #  но лучше заставить пользователя выбрать через меню)
+                    if not prefs:
+                        # Логика первого запуска: если совсем пусто, можно попробовать
+                        # загрузить дефолтную страницу и запомнить последнюю серию, 
+                        # но уведомлять не будем, пока юзер не настроит.
+                        # Или уведомим один раз с предложением настроить.
+                        pass
+                    
+                    # Итерируемся по включенным озвучкам
+                    for t_id, is_enabled in prefs.items():
+                        if not is_enabled: continue
                         
-                        # Ищем последнюю серию
-                        for s_id, eps in seasons.items():
+                        # Загружаем серии для этой озвучки
+                        # Важно: это отдельный запрос для каждого перевода
+                        await asyncio.sleep(1.0) # Не частим с запросами
+                        
+                        seasons_data = await asyncio.to_thread(client.get_episodes_for_translator, item_id, t_id)
+                        
+                        # Ищем самую последнюю серию (максимальный сезон и эпизод)
+                        max_s = -1
+                        max_e = -1
+                        
+                        for s_num, eps in seasons_data.items():
                             if not eps: continue
-                            try:
-                                s_num = int(s_id)
-                            except: s_num = 0
+                            try: s_int = int(s_num)
+                            except: continue
                             
-                            if eps:
-                                last_ep = eps[-1]
-                                try:
-                                    e_num = int(last_ep["episode"])
-                                except: e_num = 0
-                                
-                                if s_num > max_season:
-                                    max_season = s_num
-                                    max_episode = e_num
-                                elif s_num == max_season and e_num > max_episode:
-                                    max_episode = e_num
-
-                        if max_season == -1: continue
-
-                        current_tag = f"S{max_season}E{max_episode}"
-                        prev_tag = state.get(str(item_id))
+                            # Последний эпизод в списке сезона
+                            last_ep_obj = eps[-1]
+                            try: e_int = int(last_ep_obj["episode"])
+                            except: continue
+                            
+                            if s_int > max_s:
+                                max_s = s_int
+                                max_e = e_int
+                            elif s_int == max_s and e_int > max_e:
+                                max_e = e_int
                         
-                        # Если новый сериал или серия обновилась
-                        if not prev_tag:
-                            state[str(item_id)] = current_tag
-                        elif prev_tag != current_tag:
-                            msg = (
-                                f"🔥 <b>Вышла новая серия!</b>\n\n"
-                                f"🎬 <b>{title}</b>\n"
-                                f"Сезон {max_season}, Серия {max_episode}\n\n"
-                                f"<a href='{url}'>Смотреть на сайте</a>"
-                            )
-                            try:
-                                await bot.send_message(TELEGRAM_CHAT_ID, msg, parse_mode="HTML")
-                                logger.info(f"🔔 Уведомление: {title} {current_tag}")
-                                state[str(item_id)] = current_tag
-                            except Exception as e:
-                                logger.error(f"Ошибка отправки в TG: {e}")
+                        if max_s == -1: continue
+                        
+                        last_tag = f"S{max_s}E{max_e}"
+                        
+                        # Проверяем сохраненный прогресс
+                        current_progress = state[item_id]["progress"].get(t_id)
+                        
+                        if current_progress != last_tag:
+                            # Новая серия!
+                            if current_progress: # Если это не первый проход
+                                # Нужно получить имя озвучки (мы его не храним в prefs, придется без него или кешировать)
+                                # Для простоты пока без имени, или можно его тоже сохранить в state при настройке
+                                voice_msg = f"Озвучка ID: {t_id}" # Можно улучшить
+                                
+                                msg = (
+                                    f"🔥 <b>Новая серия!</b>\n"
+                                    f"🎬 <b>{title}</b>\n"
+                                    f"Сезон {max_s}, Серия {max_e}\n"
+                                    f"<a href='{url}'>Смотреть</a>"
+                                )
+                                
+                                kb = InlineKeyboardMarkup(inline_keyboard=[
+                                    [InlineKeyboardButton(text="⚙️ Настроить озвучки", callback_data=f"sett_{item_id}")]
+                                ])
+                                
+                                try:
+                                    await bot.send_message(TELEGRAM_CHAT_ID, msg, parse_mode="HTML", reply_markup=kb)
+                                    logger.info(f"🔔 Notify: {title} {last_tag}")
+                                except Exception as e:
+                                    logger.error(f"Send error: {e}")
+                            
+                            # Сохраняем новый прогресс
+                            state[item_id]["progress"][t_id] = last_tag
 
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        continue
-                    
-                    # Пауза между запросами к сайту (чтобы не забанили)
-                    await asyncio.sleep(2)
+                except Exception as ex:
+                    logger.error(f"Error checking item {item.get('title')}: {ex}")
+                    continue
 
-                save_state(state)
-                logger.info("✅ Проверка завершена. Следующая через 12 часов.")
+            # Сохраняем базу после прохода всего списка
+            save_state(state)
+            logger.info("✅ Проверка завершена.")
+            
+            # Ждем 15 минут до следующей проверки
+            await asyncio.sleep(900)
 
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.error(f"Ошибка цикла проверки: {e}")
-
-            # Проверяем раз в 12 часов (43200 сек)
-            await asyncio.sleep(43200)
-
-    except asyncio.CancelledError:
-        logger.info("🛑 Фоновая задача проверки остановлена.")
+        except Exception as e:
+            logger.error(f"Global Loop Error: {e}")
+            await asyncio.sleep(60)
