@@ -894,11 +894,22 @@
                     });
 
                     // Клик по кнопке
-                    myBtn.on('hover:enter', function() {
+                   myBtn.on('hover:enter', function() {
                         var rid = $(this).data('rezka-id');
                         if (!rid) return;
 
-                        // Формируем меню с галочками
+                        var btnRef = myBtn;
+                        var buttonsRef = buttons;
+
+                        function restoreFocus() {
+                            setTimeout(function() {
+                                try {
+                                    Lampa.Controller.collectionSet(buttonsRef);
+                                    Lampa.Controller.collectionFocus(btnRef, buttonsRef);
+                                } catch(e) {}
+                            }, 200);
+                        }
+
                         var menuItems = [
                             { title: (libraryState.watching.has(rid) ? '✅ ' : '') + 'В Смотрю', value: 'watching' },
                             { title: (libraryState.later.has(rid) ? '✅ ' : '') + 'В Позже', value: 'later' },
@@ -927,30 +938,29 @@
                                         libraryState.watching.delete(rid);
                                         libraryState.later.delete(rid);
                                         libraryState.watched.delete(rid);
-                                        myBtn.find('svg').attr('fill', 'none');
-                                        myBtn.find('span').text('Папки');
+                                        btnRef.find('svg').attr('fill', 'none');
+                                        btnRef.find('span').text('Папки');
                                     } else {
                                         libraryState.watching.delete(rid);
                                         libraryState.later.delete(rid);
                                         libraryState.watched.delete(rid);
                                         libraryState[a.value].add(rid);
                                         
-                                        myBtn.find('svg').attr('fill', '#ffffff');
-                                        myBtn.find('span').text('В папке');
+                                        btnRef.find('svg').attr('fill', '#ffffff');
+                                        btnRef.find('span').text('В папке');
                                     }
                                     
-                                    setTimeout(function() {
-                                        Lampa.Controller.toggle('full');
-                                    }, 150);
+                                    restoreFocus();
                                 },
                                 error: function() {
                                     Lampa.Loading.stop();
                                     Lampa.Noty.show('Ошибка');
-                                    setTimeout(function() {
-                                        Lampa.Controller.toggle('full');
-                                    }, 150);
+                                    restoreFocus();
                                 }
                             });
+                            },
+                            onBack: function() {
+                                restoreFocus();
                             }
                         });
                     });
