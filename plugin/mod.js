@@ -616,55 +616,52 @@
             Lampa.Controller.toggle('rezka');
         };
 
-        // --- ИСПРАВЛЕНИЕ ЗАВИСАНИЯ ПРИ ВОЗВРАТЕ ИЗ МЕНЮ ---
-        comp.onResume = function() {
-            console.log('[Rezka] onResume called - restoring control');
+        // --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ВОССТАНОВЛЕНИЕ ПОСЛЕ ВОЗВРАТА ИЗ МЕНЮ ---
+        comp.resume = function() {
+            console.log('[Rezka] ✅ RESUME called');
             
-            // Небольшая задержка для стабильности
+            // Небольшая задержка для стабильности UI
             setTimeout(function() {
-                // 1. Проверяем, что элементы еще существуют
+                // Проверяем существование элементов
                 if (!comp.html || !comp.html.length) {
-                    console.log('[Rezka] HTML not found on resume');
+                    console.log('[Rezka] ❌ HTML not found');
                     return;
                 }
 
-                // 2. Находим валидный элемент для фокуса
-                var targetElement = null;
+                // Ищем валидный элемент
+                var target = null;
                 
-                // Сначала пробуем last_item
                 if (last_item && $(last_item).length && $(last_item).is(':visible') && $(last_item).parent().length) {
-                    targetElement = last_item;
-                    console.log('[Rezka] Using last_item');
+                    target = last_item;
+                    console.log('[Rezka] ✓ Using last_item');
                 } else {
-                    // Если last_item невалиден, берем первую карточку
-                    targetElement = comp.html.find('.rezka-card.selector').first();
-                    if (!targetElement.length) {
-                        // Если нет карточек, берем кнопку сортировки
-                        targetElement = comp.html.find('.rezka-sort-btn').first();
+                    target = comp.html.find('.rezka-card.selector').first();
+                    if (!target.length) {
+                        target = comp.html.find('.rezka-sort-btn').first();
                     }
-                    console.log('[Rezka] Using fallback element');
+                    console.log('[Rezka] ✓ Using fallback');
                 }
 
-                // 3. Принудительно активируем контроллер
-                Lampa.Controller.toggle('rezka');
-                
-                // 4. Устанавливаем фокус
-                if (targetElement && targetElement.length) {
-                    Lampa.Controller.collectionFocus(targetElement, comp.html);
-                    last_item = targetElement;
-                    console.log('[Rezka] Focus restored successfully');
+                if (target && target.length) {
+                    // КРИТИЧЕСКИ ВАЖНО: правильная последовательность
+                    Lampa.Controller.collectionSet(comp.html);
+                    Lampa.Controller.collectionFocus(target, comp.html);
+                    Lampa.Controller.toggle('rezka');
+                    
+                    last_item = target;
+                    console.log('[Rezka] ✅ Control restored');
                 } else {
-                    console.log('[Rezka] No valid element found for focus');
+                    console.log('[Rezka] ❌ No valid target found');
                 }
             }, 100);
         };
 
         comp.pause = function() {
-            console.log('[Rezka] Component paused');
+            console.log('[Rezka] Paused');
         };
 
         comp.destroy = function() {
-            console.log('[Rezka] Component destroyed');
+            console.log('[Rezka] Destroyed');
             Lampa.Controller.clear();
             comp.html.remove();
         };
@@ -675,18 +672,20 @@
 
     function init() {
         if (!window.Lampa) return;
+        
         function createComponent(name, category) {
             Lampa.Component.add(name, function() {
                 var c = new RezkaCategory(category);
-                // КРИТИЧЕСКИ ВАЖНО: привязываем onResume к lifecycle
+                
+                // ВАЖНО: привязываем resume к lifecycle
                 c.activity_resume = function() { 
-                    if (c.onResume) {
-                        c.onResume(); 
-                    }
+                    if (c.resume) c.resume(); 
                 };
+                
                 return c;
             });
         }
+        
         createComponent('rezka_watching', 'watching');
         createComponent('rezka_later', 'later');
         createComponent('rezka_watched', 'watched');
@@ -710,10 +709,10 @@
             });
         }, 1000);
 
-        // Слушатель активности для восстановления контроля
+        // Слушатель активности
         Lampa.Listener.follow('activity', function(e) {
             if (e.type === 'active' && e.component.indexOf('rezka_') === 0) {
-                console.log('[Rezka] Activity became active:', e.component);
+                console.log('[Rezka] Activity active:', e.component);
                 setTimeout(function() { 
                     Lampa.Controller.toggle('rezka'); 
                 }, 50);
