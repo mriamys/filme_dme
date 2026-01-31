@@ -4,7 +4,36 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Folders Edition + Memory)...');
+    console.log('[Rezka] Plugin loading (Folders Edition + No Freeze + Styles)...');
+
+    // --- СТИЛИ ДЛЯ КНОПКИ (ЧТОБЫ НЕ СЛИВАЛАСЬ) ---
+    var style = document.createElement('style');
+    style.innerHTML = `
+        .rezka-poster-btn {
+            color: #ffffff !important;
+            border-color: #ffffff !important;
+            transition: all 0.2s;
+        }
+        .rezka-poster-btn svg {
+            stroke: #ffffff;
+            transition: all 0.2s;
+        }
+        /* Когда кнопка в фокусе (наведена) - белый фон, черный текст */
+        .rezka-poster-btn.focus {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            border-color: #ffffff !important;
+            transform: scale(1.05);
+        }
+        .rezka-poster-btn.focus svg {
+            stroke: #000000 !important;
+        }
+        /* Если иконка залита (в папке) и кнопка в фокусе - заливка черная */
+        .rezka-poster-btn.focus svg[fill="#ffffff"] {
+            fill: #000000 !important;
+        }
+    `;
+    document.body.appendChild(style);
 
     // --- ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ ЗАПОМИНАНИЯ ВЫБОРА ---
     var STORAGE_KEY = 'rezka_movie_choices';
@@ -510,9 +539,7 @@
                     } else if (sel.value === 'change_choice') {
                         comp.forgetChoice(item.url);
                         var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
-                        // Повторяем логику из card.on('hover:enter')
-                        var rawTitle = item.title || '';
-                        var yearMatch = rawTitle.match(/\((\d{4})\)/);
+                        var yearMatch = (item.title || '').match(/\((\d{4})\)/);
                         var year = yearMatch ? yearMatch[1] : '';
                         var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
                         var titleRu = titleNoYear.split('/')[0].trim();
@@ -824,11 +851,8 @@
                 var buttons = render.find('.full-start-new__buttons, .full-start__buttons');
                 
                 if (buttons.length) {
-                    // Создаем кнопку "Папки" (белую)
-                    var myBtn = $('<div class="full-start__button selector view--category"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><span>Папки</span></div>');
-                    
-                    // Белый стиль (как просили)
-                    myBtn.css({ color: '#ffffff', borderColor: '#ffffff' });
+                    // Создаем кнопку "Папки" (белую, с классом rezka-poster-btn для стилей)
+                    var myBtn = $('<div class="full-start__button selector view--category rezka-poster-btn"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><span>Папки</span></div>');
                     
                     buttons.append(myBtn);
 
@@ -919,15 +943,12 @@
                                             myBtn.find('span').text('В папке');
                                         }
                                         
-                                        // !ВАЖНО: ВОЗВРАЩАЕМ УПРАВЛЕНИЕ И ФОКУС, ЧТОБЫ НЕ ЗАВИСАЛО
-                                        Lampa.Controller.toggle('full_start'); 
-                                        Lampa.Controller.collectionFocus(myBtn, render);
+                                        // НЕ ТРОГАЕМ КОНТРОЛЛЕРЫ (чтобы не было зависаний)
+                                        // Lampa сама вернет фокус на кнопку при закрытии
                                     },
                                     error: function() {
                                         Lampa.Loading.stop();
                                         Lampa.Noty.show('Ошибка');
-                                        // Возвращаем управление даже при ошибке
-                                        Lampa.Controller.toggle('full_start'); 
                                     }
                                 });
                             }
