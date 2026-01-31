@@ -33,7 +33,6 @@
             var loader = $('<div class="broadcast__text">Загрузка...</div>');
             comp.html.append(loader);
 
-            // Добавляем параметр сортировки к запросу
             var url = MY_API_URL + endpoints[category] + '?sort=' + current_sort;
 
             $.ajax({
@@ -48,7 +47,7 @@
                         comp.renderList();
                     } else {
                         comp.html.append('<div class="broadcast__text">Список пуст</div>');
-                        comp.renderHeaderOnly(); // Рисуем хедер, чтобы можно было поменять сортировку
+                        comp.renderHeaderOnly(); 
                     }
                 },
                 error: function(err) {
@@ -84,14 +83,18 @@
             // Инициализация скролла Lampa
             scroll = new Lampa.Scroll({
                 horizontal: false,
-                step: 250
+                step: 250,
+                // Включаем колесико мыши для ПК
+                mouse_wheel: true 
             });
             
-            // Включаем поддержку колесика мыши для ПК
-            scroll.wheel(true);
+            // Дополнительная активация колеса (на всякий случай, в разных версиях Lampa по-разному)
+            if(scroll.wheel) scroll.wheel(true);
 
             // Обертка
             scroll_wrapper = $('<div class="rezka-scroll-wrapper"></div>');
+            
+            // Важно для корректной работы скролла:
             scroll_wrapper.css({
                 'position': 'relative',
                 'display': 'flex',
@@ -118,7 +121,7 @@
 
             scroll_wrapper.append(grid);
             
-            // Добавляем контент в скролл компонент
+            // ВАЖНО: Добавляем обертку в скролл, а скролл в html
             scroll.append(scroll_wrapper);
             comp.html.append(scroll.render());
 
@@ -136,6 +139,7 @@
                 }
                 
                 // Принудительно ставим фокус
+                if(last_item) Lampa.Controller.collectionFocus(last_item, comp.html);
                 Lampa.Controller.toggle('rezka');
             }, 150);
         };
@@ -283,10 +287,18 @@
 
             card.data('item', item);
 
+            // ОБРАБОТКА ФОКУСА (ГЛАВНОЕ ДЛЯ ТВ)
             card.on('hover:focus', function() {
                 last_item = $(this);
-                // Обновляем скролл при фокусе, чтобы элемент был виден
+                // Добавляем класс для визуальной подсветки
+                $(this).addClass('focus');
+                
+                // ВАЖНО: Обновляем скролл, чтобы элемент был виден
                 if (scroll) scroll.update($(this));
+            });
+
+            card.on('hover:blur', function() {
+                $(this).removeClass('focus');
             });
 
             card.on('hover:enter', function(e) {
@@ -411,14 +423,17 @@
                 title: 'Управление', items: items,
                 onSelect: function(sel) {
                     isModalOpen = false;
-                    Lampa.Controller.toggle('rezka'); 
                     
-                    if (sel.value === 'episodes') comp.episodes(item);
-                    else if (sel.value === 'manual_search') {
+                    if (sel.value === 'episodes') {
+                        comp.episodes(item);
+                    } else if (sel.value === 'manual_search') {
                         var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
                         comp.search(ruName);
+                        // Для ручного поиска нужно вернуть контроллер
+                        Lampa.Controller.toggle('rezka');
+                    } else {
+                        comp.action(sel.value, item);
                     }
-                    else comp.action(sel.value, item);
                 },
                 onBack: function() { 
                     isModalOpen = false;
@@ -550,11 +565,10 @@
         comp.start = function() {
             Lampa.Controller.add('rezka', {
                 toggle: function() {
-                    // ВАЖНО: Восстанавливаем коллекцию и фокус при возврате из меню
                     Lampa.Controller.collectionSet(comp.html);
                     
-                    // Если last_item пуст или удален, берем первый доступный
-                    if (!last_item || !last_item.parent().length) {
+                    // Если last_item пуст или потерян, берем первый элемент
+                    if (!last_item || !$(last_item).parent().length) {
                         last_item = comp.html.find('.selector').first();
                     }
                     
@@ -562,7 +576,7 @@
                 },
                 up: function() {
                     // Если мы уже на кнопке сортировки -> открываем Head
-                    if (last_item && last_item.hasClass('rezka-sort-btn')) {
+                    if (last_item && $(last_item).hasClass('rezka-sort-btn')) {
                         Lampa.Controller.toggle('head');
                         return;
                     }
@@ -580,9 +594,16 @@
                         }
                     }
                 },
-                down: function() { if(Navigator.canmove('down')) Navigator.move('down'); },
-                left: function() { if(Navigator.canmove('left')) Navigator.move('left'); else Lampa.Controller.toggle('menu'); },
-                right: function() { if(Navigator.canmove('right')) Navigator.move('right'); },
+                down: function() { 
+                    if(Navigator.canmove('down')) Navigator.move('down'); 
+                },
+                left: function() { 
+                    if(Navigator.canmove('left')) Navigator.move('left'); 
+                    else Lampa.Controller.toggle('menu'); 
+                },
+                right: function() { 
+                    if(Navigator.canmove('right')) Navigator.move('right'); 
+                },
                 back: function() { Lampa.Activity.backward(); }
             });
 
@@ -590,6 +611,7 @@
         };
 
         comp.onResume = function() {
+            // При возврате (например из плеера или меню) восстанавливаем управление
             Lampa.Controller.toggle('rezka');
         };
 
@@ -597,6 +619,7 @@
 
         comp.destroy = function() {
             Lampa.Controller.clear();
+            if(scroll) scroll.destroy();
             comp.html.remove();
         };
 
