@@ -920,36 +920,31 @@
                                     contentType: 'application/json',
                                     data: JSON.stringify(payload),
                                     success: function() {
-                                        Lampa.Loading.stop();
-                                        Lampa.Noty.show('Готово');
+                                    Lampa.Loading.stop();
+                                    Lampa.Noty.show('Готово');
+                                    
+                                    // Принудительно обновляем локальный кэш и вид кнопки
+                                    if (a.value === 'delete') {
+                                        libraryState.watching.delete(rid);
+                                        libraryState.later.delete(rid);
+                                        libraryState.watched.delete(rid);
+                                        myBtn.find('svg').attr('fill', 'none');
+                                        myBtn.find('span').text('Папки');
+                                    } else {
+                                        libraryState.watching.delete(rid);
+                                        libraryState.later.delete(rid);
+                                        libraryState.watched.delete(rid);
+                                        libraryState[a.value].add(rid);
                                         
-                                        // Принудительно обновляем локальный кэш
-                                        if (a.value === 'delete') {
-                                            libraryState.watching.delete(rid);
-                                            libraryState.later.delete(rid);
-                                            libraryState.watched.delete(rid);
-                                            // Сбрасываем вид кнопки
-                                            myBtn.find('svg').attr('fill', 'none');
-                                            myBtn.find('span').text('Папки');
-                                        } else {
-                                            // Удаляем из других, добавляем в текущую
-                                            libraryState.watching.delete(rid);
-                                            libraryState.later.delete(rid);
-                                            libraryState.watched.delete(rid);
-                                            libraryState[a.value].add(rid);
-                                            
-                                            // Обновляем вид кнопки
-                                            myBtn.find('svg').attr('fill', '#ffffff');
-                                            myBtn.find('span').text('В папке');
-                                        }
-                                        
-                                        // НЕ ТРОГАЕМ КОНТРОЛЛЕРЫ (чтобы не было зависаний)
-                                        // Lampa сама вернет фокус на кнопку при закрытии
-                                    },
-                                    error: function() {
-                                        Lampa.Loading.stop();
-                                        Lampa.Noty.show('Ошибка');
+                                        myBtn.find('svg').attr('fill', '#ffffff');
+                                        myBtn.find('span').text('В папке');
                                     }
+                                    // БОЛЬШЕ НИЧЕГО НЕ ПИШЕМ - Lampa сама вернет фокус на кнопку
+                                },
+                                error: function() {
+                                    Lampa.Loading.stop();
+                                    Lampa.Noty.show('Ошибка');
+                                }
                                 });
                             }
                         });
