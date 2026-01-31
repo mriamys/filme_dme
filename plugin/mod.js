@@ -4,7 +4,7 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Final Fixes)...');
+    console.log('[Rezka] Plugin loading (Final Polish)...');
 
     function RezkaCategory(category) {
         var comp = {};
@@ -13,7 +13,7 @@
         var last_item = null;
         var all_items = []; 
         var current_sort = 'added'; 
-        var isModalOpen = false; // <-- ИСПРАВЛЕНО: Добавлена пропущенная переменная
+        var isModalOpen = false; // Переменная на месте
 
         var endpoints = {
             'watching': '/api/watching',
@@ -296,7 +296,6 @@
 
             card.on('hover:enter', function(e) {
                 if(e) e.preventDefault();
-                // ТЕПЕРЬ ЭТА СТРОКА НЕ БУДЕТ ВЫДАВАТЬ ОШИБКУ
                 if(isModalOpen) return;
                 comp.search(titleRuClean, titleEn, year, mediaType);
             });
@@ -565,18 +564,19 @@
                     Lampa.Controller.collectionFocus(last_item, comp.html);
                 },
                 up: function() {
-                    // 1. Если мы УЖЕ на кнопке сортировки -> идем в Head
+                    // ЕСЛИ УЖЕ НА КНОПКЕ СОРТИРОВКИ -> ВЫХОДИМ В HEAD
                     if (last_item && $(last_item).hasClass('rezka-sort-btn')) {
                         Lampa.Controller.toggle('head');
                         return;
                     }
                     
-                    // 2. ИСПРАВЛЕНИЕ НАВИГАЦИИ СЛЕВА
-                    // Если можно идти вверх (например, со второго ряда), идем
+                    // --- ИСПРАВЛЕННАЯ ЛОГИКА ---
+                    // Сначала пробуем стандартный ход вверх
                     if (Navigator.canmove('up')) {
-                        Navigator.move('up');
+                         Navigator.move('up');
                     } else {
-                        // Если вверх идти нельзя (например, 1-й ряд слева), прыгаем на кнопку
+                        // Если стандартный ход невозможен (значит мы в верхнем ряду),
+                        // то ПРИНУДИТЕЛЬНО переходим на кнопку сортировки.
                         var sortBtn = comp.html.find('.rezka-sort-btn');
                         if (sortBtn.length) {
                              Navigator.focus(sortBtn);
@@ -596,12 +596,17 @@
 
         // --- ИСПРАВЛЕНИЕ ЗАВИСАНИЯ ПРИ ВОЗВРАТЕ ---
         comp.onResume = function() {
+            // Убеждаемся, что переменные существуют
             if (scroll_wrapper && scroll_wrapper.length) {
-                // Ждем чуть дольше, чтобы меню полностью закрылось
+                // Ставим таймаут, чтобы меню успело закрыться
                 setTimeout(function() {
+                    // 1. Активируем контроллер плагина
                     Lampa.Controller.toggle('rezka');
-                    if(last_item) {
-                        Lampa.Controller.collectionFocus(last_item, comp.html);
+                    
+                    // 2. ЯВНО ФОКУСИРУЕМСЯ на последнем элементе
+                    // Просто 'collectionFocus' иногда не хватает для визуального выделения
+                    if(last_item && $(last_item).length) {
+                        Navigator.focus(last_item);
                     }
                 }, 200);
             }
