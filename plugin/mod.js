@@ -894,7 +894,7 @@
                     });
 
                     // Клик по кнопке
-                   myBtn.on('hover:enter', function() {
+                    myBtn.on('hover:enter', function() {
                         var rid = $(this).data('rezka-id');
                         if (!rid) return;
 
@@ -902,20 +902,8 @@
 
                         function restoreFocus() {
                             setTimeout(function() {
-                                try {
-                                    // Lampа сама восстанавливает контроллер текущей
-                                    // активности — это то же, что происходит при
-                                    // возврате с любой другой страницы на full.
-                                    var activity = Lampa.Activity.current();
-                                    if (activity && activity.resume) {
-                                        activity.resume();
-                                    } else {
-                                        Lampa.Activity.active();
-                                    }
-                                } catch(e) {
-                                    console.log('[Rezka] restoreFocus fallback', e);
-                                }
-                            }, 250);
+                                Lampa.Controller.toggle('full_start');
+                            }, 100);
                         }
 
                         var menuItems = [
