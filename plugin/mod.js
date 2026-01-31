@@ -4,7 +4,7 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Smart Navigation Edition + Memory + Poster Button)...');
+    console.log('[Rezka] Plugin loading (Folders Edition + Memory)...');
 
     // --- ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ ЗАПОМИНАНИЯ ВЫБОРА ---
     var STORAGE_KEY = 'rezka_movie_choices';
@@ -33,6 +33,35 @@
     function getChoice(rezkaUrl) {
         var choices = getStoredChoices();
         return choices[rezkaUrl] || null;
+    }
+
+    // --- СОСТОЯНИЕ БИБЛИОТЕКИ (Для отображения статусов) ---
+    var libraryState = {
+        watching: new Set(),
+        later: new Set(),
+        watched: new Set(),
+        isLoaded: false
+    };
+
+    function updateLibraryState() {
+        // Загружаем списки, чтобы знать, какие фильмы уже добавлены
+        Promise.allSettled([
+            $.ajax({ url: MY_API_URL + '/api/watching?sort=added', dataType: 'json' }),
+            $.ajax({ url: MY_API_URL + '/api/later?sort=added', dataType: 'json' }),
+            $.ajax({ url: MY_API_URL + '/api/watched?sort=added', dataType: 'json' })
+        ]).then(function(results) {
+            if (results[0].status === 'fulfilled' && results[0].value) 
+                libraryState.watching = new Set(results[0].value.map(function(i){ return String(i.id); }));
+            
+            if (results[1].status === 'fulfilled' && results[1].value) 
+                libraryState.later = new Set(results[1].value.map(function(i){ return String(i.id); }));
+            
+            if (results[2].status === 'fulfilled' && results[2].value) 
+                libraryState.watched = new Set(results[2].value.map(function(i){ return String(i.id); }));
+
+            libraryState.isLoaded = true;
+            console.log('[Rezka] Library state updated');
+        });
     }
 
     function RezkaCategory(category) {
@@ -622,6 +651,7 @@
                 success: function(res) { 
                     Lampa.Loading.stop(); 
                     Lampa.Noty.show('Выполнено');
+                    updateLibraryState(); // Обновляем кэш
                     Lampa.Controller.toggle('rezka');
                     setTimeout(function() { comp.loadData(); }, 500);
                 },
@@ -778,24 +808,27 @@
             });
         }, 1000);
 
-        // --- ИНТЕГРАЦИЯ В КАРТОЧКУ LAMPA (FULL) ---
+        // --- ОБНОВЛЕНИЕ БИБЛИОТЕКИ ПРИ СТАРТЕ ---
+        updateLibraryState();
+
+        // --- ИНТЕГРАЦИЯ В КАРТОЧКУ LAMPA (ПОСТЕР) ---
         Lampa.Listener.follow('full', function(e) {
             if (e.type === 'complite') {
+                updateLibraryState(); // Обновляем, чтобы знать актуальные статусы
+
                 var render = e.object.activity.render();
                 var movie = e.data.movie;
                 var title = movie.title || movie.name;
-                var original_title = movie.original_title || movie.original_name;
                 var year = (movie.release_date || movie.first_air_date || '0000').substring(0,4);
 
-                // Ищем контейнер кнопок (поддержка разных версий Lampa)
                 var buttons = render.find('.full-start-new__buttons, .full-start__buttons');
                 
                 if (buttons.length) {
-                    // Создаем кнопку Rezka
-                    var myBtn = $('<div class="full-start__button selector view--category"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg><span>Rezka</span></div>');
+                    // Создаем кнопку "Папки" (белую)
+                    var myBtn = $('<div class="full-start__button selector view--category"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><span>Папки</span></div>');
                     
-                    // Стиль кнопки - оранжевый как у Rezka
-                    myBtn.css({ color: '#d2a028', borderColor: '#d2a028' });
+                    // Белый стиль (как просили)
+                    myBtn.css({ color: '#ffffff', borderColor: '#ffffff' });
                     
                     buttons.append(myBtn);
 
@@ -812,38 +845,45 @@
                                 return;
                             }
 
-                            // Пробуем найти точное совпадение по году
-                            var match = results.find(function(r) { 
-                                return r.year && r.year == year; 
-                            }) || results[0]; 
-
-                            var rezkaId = match.id;
+                            // Поиск точного совпадения по году
+                            var match = results.find(function(r) { return r.year && r.year == year; }) || results[0]; 
+                            var rezkaId = String(match.id); 
                             
                             // Сохраняем ID
                             myBtn.data('rezka-id', rezkaId);
                             
-                            // Кнопка становится активной (визуально можно изменить фон если нужно)
-                            // myBtn.css({ background: 'rgba(210, 160, 40, 0.1)' });
+                            // 2. ПРОВЕРЯЕМ СТАТУС В БИБЛИОТЕКЕ
+                            var inLib = false;
+                            if (libraryState.watching.has(rezkaId)) inLib = true;
+                            if (libraryState.later.has(rezkaId)) inLib = true;
+                            if (libraryState.watched.has(rezkaId)) inLib = true;
+
+                            if (inLib) {
+                                // Если есть в папке - закрашиваем иконку и меняем текст
+                                myBtn.find('svg').attr('fill', '#ffffff');
+                                myBtn.find('span').text('В папке');
+                            }
                         },
                         error: function() {
                             myBtn.find('span').text('Ошибка');
                         }
                     });
 
-                    // Клик по кнопке - открывает меню действий
+                    // Клик по кнопке
                     myBtn.on('hover:enter', function() {
                         var rid = $(this).data('rezka-id');
                         if (!rid) return;
 
+                        // Формируем меню с галочками
                         var menuItems = [
-                            { title: 'В Смотрю', value: 'watching' },
-                            { title: 'В Позже', value: 'later' },
-                            { title: 'В Архив', value: 'watched' },
-                            { title: 'Удалить', value: 'delete' }
+                            { title: (libraryState.watching.has(rid) ? '✅ ' : '') + 'В Смотрю', value: 'watching' },
+                            { title: (libraryState.later.has(rid) ? '✅ ' : '') + 'В Позже', value: 'later' },
+                            { title: (libraryState.watched.has(rid) ? '✅ ' : '') + 'В Архив', value: 'watched' },
+                            { title: '🗑️ Удалить', value: 'delete' }
                         ];
 
                         Lampa.Select.show({
-                            title: 'Rezka: Управление',
+                            title: 'Папки: Управление',
                             items: menuItems,
                             onSelect: function(a) {
                                 Lampa.Loading.start();
@@ -858,10 +898,36 @@
                                     success: function() {
                                         Lampa.Loading.stop();
                                         Lampa.Noty.show('Готово');
+                                        
+                                        // Принудительно обновляем локальный кэш
+                                        if (a.value === 'delete') {
+                                            libraryState.watching.delete(rid);
+                                            libraryState.later.delete(rid);
+                                            libraryState.watched.delete(rid);
+                                            // Сбрасываем вид кнопки
+                                            myBtn.find('svg').attr('fill', 'none');
+                                            myBtn.find('span').text('Папки');
+                                        } else {
+                                            // Удаляем из других, добавляем в текущую
+                                            libraryState.watching.delete(rid);
+                                            libraryState.later.delete(rid);
+                                            libraryState.watched.delete(rid);
+                                            libraryState[a.value].add(rid);
+                                            
+                                            // Обновляем вид кнопки
+                                            myBtn.find('svg').attr('fill', '#ffffff');
+                                            myBtn.find('span').text('В папке');
+                                        }
+                                        
+                                        // !ВАЖНО: ВОЗВРАЩАЕМ УПРАВЛЕНИЕ И ФОКУС, ЧТОБЫ НЕ ЗАВИСАЛО
+                                        Lampa.Controller.toggle('full_start'); 
+                                        Lampa.Controller.collectionFocus(myBtn, render);
                                     },
                                     error: function() {
                                         Lampa.Loading.stop();
                                         Lampa.Noty.show('Ошибка');
+                                        // Возвращаем управление даже при ошибке
+                                        Lampa.Controller.toggle('full_start'); 
                                     }
                                 });
                             }
