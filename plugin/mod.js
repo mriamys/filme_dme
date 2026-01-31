@@ -113,7 +113,11 @@
             return comp.html;
         };
         
-        comp.loadData = function() {
+        comp.loadData = function(retryCount) {
+            retryCount = retryCount || 0;
+            var MAX_RETRIES = 3;
+            var RETRY_DELAY = 2000;
+
             comp.html.empty();
             var loader = $('<div class="broadcast__text">Загрузка...</div>');
             comp.html.append(loader);
@@ -130,6 +134,11 @@
                     if (items && items.length > 0) {
                         all_items = items;
                         comp.renderList();
+                    } else if (retryCount < MAX_RETRIES) {
+                        loader.text('Загрузка... попытка ' + (retryCount + 2));
+                        setTimeout(function() {
+                            comp.loadData(retryCount + 1);
+                        }, RETRY_DELAY);
                     } else {
                         comp.html.append('<div class="broadcast__text">Список пуст</div>');
                         comp.renderHeaderOnly(); 
@@ -138,7 +147,14 @@
                 error: function(err) {
                     console.error('Error loading rezka:', err);
                     loader.remove();
-                    comp.html.append('<div class="broadcast__text">Ошибка загрузки данных</div>');
+                    if (retryCount < MAX_RETRIES) {
+                        comp.html.append('<div class="broadcast__text">Ошибка... повторяю</div>');
+                        setTimeout(function() {
+                            comp.loadData(retryCount + 1);
+                        }, RETRY_DELAY);
+                    } else {
+                        comp.html.append('<div class="broadcast__text">Ошибка загрузки данных</div>');
+                    }
                 }
             });
         };
@@ -751,32 +767,8 @@
         };
 
         comp.resume = function() {
-            console.log('[Rezka] ✅ RESUME called');
-            
-            setTimeout(function() {
-                if (!comp.html || !comp.html.length) {
-                    console.log('[Rezka] ❌ HTML not found');
-                    return;
-                }
-
-                var target = null;
-                
-                if (last_item && $(last_item).length && $(last_item).is(':visible') && $(last_item).parent().length) {
-                    target = last_item;
-                } else {
-                    target = comp.html.find('.rezka-card.selector').first();
-                    if (!target.length) {
-                        target = comp.html.find('.rezka-sort-btn').first();
-                    }
-                }
-
-                if (target && target.length) {
-                    last_item = target;
-                    comp.start();
-                } else {
-                    console.log('[Rezka] ❌ No valid target found');
-                }
-            }, 100);
+            console.log('[Rezka] resume called');
+            comp.start();
         };
 
         comp.pause = function() {
@@ -959,11 +951,27 @@
         });
 
         Lampa.Listener.follow('activity', function(e) {
-            if (e.type === 'active' && e.component.indexOf('rezka_') === 0) {
+            if (e.type === 'active' && e.component && e.component.indexOf('rezka_') === 0) {
                 console.log('[Rezka] Activity active:', e.component);
                 setTimeout(function() { 
                     Lampa.Controller.toggle('rezka'); 
-                }, 50);
+                }, 100);
+            }
+        });
+
+        // Перехват: когда меню отдаёт контроль вправо обратно на компонент
+        Lampa.Listener.follow('menu', function(e) {
+            if (e.type === 'close') {
+                // Меню закрылось — проверяем через тик что активен наш компонент
+                setTimeout(function() {
+                    try {
+                        var act = Lampa.Activity.current();
+                        if (act && act.component && act.component.indexOf('rezka_') === 0) {
+                            console.log('[Rezka] Menu closed, restoring rezka controller');
+                            Lampa.Controller.toggle('rezka');
+                        }
+                    } catch(e) {}
+                }, 150);
             }
         });
     }
