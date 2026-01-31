@@ -4,7 +4,7 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Final Polish)...');
+    console.log('[Rezka] Plugin loading (Smart Navigation Edition)...');
 
     function RezkaCategory(category) {
         var comp = {};
@@ -13,7 +13,7 @@
         var last_item = null;
         var all_items = []; 
         var current_sort = 'added'; 
-        var isModalOpen = false; // Переменная на месте
+        var isModalOpen = false;
 
         var endpoints = {
             'watching': '/api/watching',
@@ -569,19 +569,38 @@
                         Lampa.Controller.toggle('head');
                         return;
                     }
+
+                    // --- SMART NAVIGATION FIX ---
+                    // Вычисляем, находимся ли мы визуально в первом ряду
+                    var isFirstRow = false;
+                    var currentTop = $(last_item).offset().top;
+                    var firstCard = comp.html.find('.rezka-card').first();
                     
-                    // --- ИСПРАВЛЕННАЯ ЛОГИКА ---
-                    // Сначала пробуем стандартный ход вверх
-                    if (Navigator.canmove('up')) {
-                         Navigator.move('up');
-                    } else {
-                        // Если стандартный ход невозможен (значит мы в верхнем ряду),
-                        // то ПРИНУДИТЕЛЬНО переходим на кнопку сортировки.
+                    if (firstCard.length) {
+                        var firstTop = firstCard.offset().top;
+                        // Если разница высоты между текущей и первой карточкой меньше 20px, мы в первом ряду
+                        if (Math.abs(currentTop - firstTop) < 20) {
+                            isFirstRow = true;
+                        }
+                    }
+
+                    if (isFirstRow) {
+                        // Если мы в первом ряду, ПРИНУДИТЕЛЬНО идем на кнопку Сортировки
                         var sortBtn = comp.html.find('.rezka-sort-btn');
                         if (sortBtn.length) {
-                             Navigator.focus(sortBtn);
+                            Navigator.focus(sortBtn);
                         } else {
-                             Lampa.Controller.toggle('head');
+                            Lampa.Controller.toggle('head');
+                        }
+                    } else {
+                        // Иначе (2, 3 ряд и т.д.) работаем штатно
+                        if (Navigator.canmove('up')) {
+                            Navigator.move('up');
+                        } else {
+                             // На всякий случай fallback
+                             var sortBtnFallback = comp.html.find('.rezka-sort-btn');
+                             if(sortBtnFallback.length) Navigator.focus(sortBtnFallback);
+                             else Lampa.Controller.toggle('head');
                         }
                     }
                 },
@@ -596,15 +615,18 @@
 
         // --- ИСПРАВЛЕНИЕ ЗАВИСАНИЯ ПРИ ВОЗВРАТЕ ---
         comp.onResume = function() {
-            // Убеждаемся, что переменные существуют
             if (scroll_wrapper && scroll_wrapper.length) {
-                // Ставим таймаут, чтобы меню успело закрыться
+                // Таймер для того, чтобы дать меню уехать
                 setTimeout(function() {
                     // 1. Активируем контроллер плагина
                     Lampa.Controller.toggle('rezka');
                     
-                    // 2. ЯВНО ФОКУСИРУЕМСЯ на последнем элементе
-                    // Просто 'collectionFocus' иногда не хватает для визуального выделения
+                    // 2. Проверяем, жив ли last_item, если нет - берем первый
+                    if (!last_item || !$(last_item).parent().length) {
+                         last_item = comp.html.find('.selector').first();
+                    }
+
+                    // 3. ПРИНУДИТЕЛЬНО ставим фокус
                     if(last_item && $(last_item).length) {
                         Navigator.focus(last_item);
                     }
@@ -657,7 +679,8 @@
 
         Lampa.Listener.follow('activity', function(e) {
             if (e.type === 'active' && e.component.indexOf('rezka_') === 0) {
-                Lampa.Controller.toggle('rezka');
+                // Дополнительная страховка: принудительно включаем контроллер при смене активности
+                setTimeout(function() { Lampa.Controller.toggle('rezka'); }, 100);
             }
         });
     }
