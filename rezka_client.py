@@ -84,12 +84,12 @@ class RezkaClient:
                     continue
                 text = td_1.get_text(strip=True)
                 
-                # --- ИЗМЕНЕНИЕ: Парсинг даты из 4-й колонки ---
+                # --- Парсинг даты (td-4) ---
                 date_text = ""
-                td_date = tr.find(class_="td-4")  # <-- ИСПРАВЛЕНО: td-4
+                td_date = tr.find(class_="td-4")
                 if td_date:
                     date_text = td_date.get_text(strip=True)
-                # ----------------------------------------------
+                # ---------------------------
 
                 s_id = "1"
                 e_id = "1"
@@ -137,7 +137,7 @@ class RezkaClient:
                             "episode": e_id,
                             "global_id": global_id,
                             "watched": is_watched,
-                            "date": date_text  # <-- Пробрасываем дату
+                            "date": date_text
                         }
                     )
         return seasons
@@ -352,10 +352,8 @@ class RezkaClient:
                                     p_ep["watched"] = True
                                 if t_ep.get("global_id"):
                                     p_ep["global_id"] = t_ep["global_id"]
-                                # --- ИЗМЕНЕНИЕ: Копируем дату ---
                                 if t_ep.get("date"):
                                     p_ep["date"] = t_ep["date"]
-                                # --------------------------------
                                 break
                         if not found:
                             final_seasons_dict[s_id].append(t_ep)
@@ -431,6 +429,11 @@ class RezkaClient:
     def add_favorite(self, post_id: str, cat_id: str) -> bool:
         if not self.auth():
             return False
+        # --- FIX: Заменяем названия на цифры ---
+        if cat_id == 'watching': cat_id = '1'
+        elif cat_id == 'later': cat_id = '2'
+        elif cat_id == 'watched': cat_id = '3'
+        
         try:
             r = self.session.post(
                 f"{self.origin}/ajax/favorites/",
@@ -443,6 +446,11 @@ class RezkaClient:
     def remove_favorite(self, post_id: str, cat_id: str) -> bool:
         if not self.auth():
             return False
+        # --- FIX: Заменяем названия на цифры ---
+        if cat_id == 'watching': cat_id = '1'
+        elif cat_id == 'later': cat_id = '2'
+        elif cat_id == 'watched': cat_id = '3'
+        
         try:
             r = self.session.post(
                 f"{self.origin}/ajax/favorites/",
@@ -456,6 +464,12 @@ class RezkaClient:
             return False
 
     def get_category_items_paginated(self, cat_id: str, max_pages: int = 5, sort_by: str = "added") -> List[Dict[str, Any]]:
+        # --- FIX: Маппинг названий категорий на ID для URL ---
+        if cat_id == 'watching': cat_id = '1'
+        elif cat_id == 'later': cat_id = '2'
+        elif cat_id == 'watched': cat_id = '3'
+        # ---------------------------------------------------
+
         for attempt in range(2):
             all_items: List[Dict[str, Any]] = []
             seen_ids: set[str] = set()
@@ -469,7 +483,7 @@ class RezkaClient:
                 filter_param = "filter=year"
             elif sort_by == "popular":
                 filter_param = "filter=popular"
-            success_fetch = False 
+            
             for page in range(1, max_pages + 1):
                 try:
                     url_page = f"{self.origin}/favorites/{cat_id}/"
@@ -511,11 +525,8 @@ class RezkaClient:
                         except Exception:
                             continue
                     if items_page:
-                        success_fetch = True
                         all_items.extend(items_page)
                     else:
-                        if page == 1:
-                            pass 
                         break 
                 except Exception as e:
                     print(f"ERROR Fetching page: {e}")

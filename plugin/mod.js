@@ -1,4 +1,4 @@
-(function() {
+﻿(function() {
     'use strict';
 
     var MY_API_URL = '__API_URL__';
@@ -459,12 +459,7 @@
             var items = [];
             
             items.push({ title: '🔍 Найти в TMDB', value: 'manual_search' });
-            
-            // Проверяем, есть ли сохраненный выбор
-            var savedChoice = getChoice(item.url);
-            if (savedChoice) {
-                items.push({ title: '🔄 Сменить выбор фильма', value: 'change_choice' });
-            }
+            items.push({ title: '🔄 Сменить выбор фильма', value: 'change_choice' });
 
             if (isTv) items.push({ title: '📝 Отметки серий', value: 'episodes' });
             if (category !== 'watching') items.push({ title: '▶ В Смотрю', value: 'move_watching' });
