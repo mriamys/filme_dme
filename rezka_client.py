@@ -760,6 +760,80 @@ class RezkaClient:
         except Exception as e:
             print(f"ERROR: Ошибка парсинга франшизы: {e}")
         return items
+    def get_collection_items(self, url: str) -> List[Dict[str, Any]]:
+        """
+        Парсит страницу коллекции или любую страницу с сеткой фильмов (b-content__inline_item).
+        """
+        items = []
+        # Авторизация не обязательна для публичных коллекций, но желательна для обхода защиты
+        self.auth() 
+        
+        try:
+            r = self.session.get(url)
+            if r.status_code != 200:
+                print(f"Ошибка загрузки коллекции {url}: {r.status_code}")
+                return items
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            
+            # Находим контейнер с элементами
+            container = soup.find(class_="b-content__inline_items")
+            if not container:
+                # Иногда верстка отличается, пробуем искать сразу элементы
+                blocks = soup.find_all(class_="b-content__inline_item")
+            else:
+                blocks = container.find_all("div", class_="b-content__inline_item")
+
+            for block in blocks:
+                try:
+                    # Получаем ID
+                    item_id = block.get("data-id")
+                    if not item_id: continue
+
+                    # Получаем ссылку и название
+                    link_wrap = block.find(class_="b-content__inline_item-link")
+                    link = link_wrap.find("a") if link_wrap else None
+                    if not link: continue
+                    
+                    title = link.get_text(strip=True)
+                    item_url = link.get("href")
+                    if item_url and not item_url.startswith("http"):
+                        item_url = urljoin(self.origin, item_url)
+
+                    # Получаем постер
+                    img_wrap = block.find(class_="b-content__inline_item-cover")
+                    img = img_wrap.find("img") if img_wrap else None
+                    poster = img.get("src") if img else ""
+
+                    # Получаем доп. инфу (год, жанр и т.д.)
+                    info = block.find(class_="misc")
+                    misc_text = info.get_text(strip=True) if info else ""
+                    
+                    # Год
+                    year = ""
+                    match_year = re.search(r'\((\d{4})\)', title)
+                    if match_year: year = match_year.group(1)
+
+                    # Статус (для сериалов) или качество
+                    status_elem = block.find(class_="info")
+                    status = status_elem.get_text(strip=True) if status_elem else ""
+
+                    items.append({
+                        "id": item_id,
+                        "title": title,
+                        "url": item_url,
+                        "poster": poster,
+                        "info": misc_text,
+                        "year": year,
+                        "status": status
+                    })
+                except Exception as e:
+                    print(f"Ошибка парсинга элемента коллекции: {e}")
+                    continue
+        except Exception as e:
+            print(f"Ошибка запроса к коллекции: {e}")
+        
+        return items
 
 
 __all__ = ["RezkaClient"]

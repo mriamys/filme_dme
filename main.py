@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from bot import client, bot, dp, check_updates_task, logger
+# ИМПОРТИРУЕМ ОБЕ ЗАДАЧИ
+from bot import client, bot, dp, check_updates_task, check_collections_task, logger
 import time
 
 load_dotenv()
@@ -27,31 +28,33 @@ async def lifespan(app: FastAPI):
     # --- ЗАПУСК ---
     polling_task = None
     update_task = None
+    collection_task = None # Новая задача
     
     if bot:
         print("🚀 Запуск Telegram бота и фоновых задач...")
         polling_task = asyncio.create_task(dp.start_polling(bot))
         update_task = asyncio.create_task(check_updates_task())
+        collection_task = asyncio.create_task(check_collections_task()) # <-- Запуск мониторинга коллекций
     
     yield
     
     # --- ОСТАНОВКА ---
     print("🛑 Остановка сервисов...")
     
-    # Корректная остановка задач (try/except на разных строках!)
     if polling_task:
         polling_task.cancel()
-        try:
-            await polling_task
-        except:
-            pass
+        try: await polling_task 
+        except: pass
 
     if update_task:
         update_task.cancel()
-        try:
-            await update_task
-        except:
-            pass
+        try: await update_task 
+        except: pass
+
+    if collection_task:
+        collection_task.cancel()
+        try: await collection_task 
+        except: pass
             
     if bot:
         await bot.session.close()

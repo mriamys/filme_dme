@@ -22,6 +22,13 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "http://127.0.0.1:8080")
 CAT_WATCHING = os.getenv("REZKA_CAT_WATCHING")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STATE_FILE = "series_state.json"
+SEEN_COLLECTIONS_FILE = "seen_collections.json"
+
+# --- URL КОЛЛЕКЦИЙ ДЛЯ ОТСЛЕЖИВАНИЯ ---
+MONITORED_COLLECTIONS = [
+    "https://hdrezka.me/collections/300-serialy-o-peremeschenii-vo-vremeni/?filter=last",
+    "https://hdrezka.me/collections/33-filmy-o-peremeschenii-vo-vremeni/?filter=last"
+]
 
 if not BOT_TOKEN:
     logger.error("❌ Ошибка: Не задан TELEGRAM_BOT_TOKEN в .env")
@@ -46,6 +53,23 @@ def save_state(state):
             json.dump(state, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Ошибка сохранения состояния: {e}")
+
+# --- ФУНКЦИИ ДЛЯ КОЛЛЕКЦИЙ ---
+def load_seen_collections():
+    if os.path.exists(SEEN_COLLECTIONS_FILE):
+        try:
+            with open(SEEN_COLLECTIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_seen_collections(data):
+    try:
+        with open(SEEN_COLLECTIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения seen_collections: {e}")
 
 # --- START ---
 @dp.message(Command("start"))
@@ -262,15 +286,6 @@ async def toggle_voice(callback: types.CallbackQuery):
     if "prefs" not in state[post_id]: state[post_id]["prefs"] = {}
 
     # Получаем текущее значение
-    # ВАЖНО: Если prefs пустой, нужно учесть, что первая озвучка была "визуально" включена
-    # Нам нужно получить список озвучек снова, чтобы узнать, какая первая?
-    # Это долго. Проще считать: если prefs пустой -> мы включаем ту, на которую нажали, или выключаем?
-    # ДАВАЙТЕ ТАК: Если prefs пустой -> значит все выключены кроме первой.
-    # Если нажали на первую -> она выключается. Если на другую -> она включается.
-    # Но мы не знаем, какая первая без запроса.
-    # ПОЭТОМУ: Просто переключаем `False` -> `True` и наоборот. 
-    # Если юзер хочет "дефолтную" логику, он нажмет и увидит.
-    
     current_val = state[post_id]["prefs"].get(t_id, False)
     
     # ХАК: Если prefs пустой, и мы жмем кнопку... 
@@ -307,11 +322,11 @@ async def toggle_voice(callback: types.CallbackQuery):
 async def close_settings_handler(callback: types.CallbackQuery):
     await callback.message.delete()
 
-# --- ФОНОВАЯ ЗАДАЧА ---
+# --- ФОНОВАЯ ЗАДАЧА (СЕРИАЛЫ) ---
 async def check_updates_task():
     if not bot: return
 
-    logger.info("⏳ Фоновая проверка обновлений запущена (интервал 15 мин)...")
+    logger.info("⏳ Фоновая проверка обновлений сериалов запущена (интервал 15 мин)...")
     await asyncio.sleep(5)
 
     while True:
@@ -341,38 +356,31 @@ async def check_updates_task():
                     prefs = state[item_id].get("prefs", {})
                     
                     # --- АВТО-ВКЛЮЧЕНИЕ ПЕРВОЙ ОЗВУЧКИ ---
-                    # Если настроек нет, мы должны сами определить озвучку и включить её
-                    translators_to_check = [] # Список ID для проверки
+                    translators_to_check = [] 
                     
                     if not prefs:
-                        # Настроек нет. Загружаем детали, берем первую озвучку и СОХРАНЯЕМ её как включенную
                         logger.info(f"⚙️ Auto-setup for {title}...")
                         details = await asyncio.to_thread(client.get_series_details, url)
                         translators = details.get("translators", [])
                         
                         if translators:
                             first_t_id = str(translators[0]["id"])
-                            # Включаем первую озвучку
                             if "prefs" not in state[item_id]: state[item_id]["prefs"] = {}
                             state[item_id]["prefs"][first_t_id] = True
                             
-                            # Добавляем в список проверки
                             translators_to_check.append(first_t_id)
                             logger.info(f"✅ Auto-enabled translator {first_t_id} ({translators[0]['name']})")
                         else:
-                            # Если озвучек нет (фильм?), пропускаем
                             pass
                     else:
-                        # Настройки есть, берем только включенные
                         for t_id, enabled in prefs.items():
                             if enabled:
                                 translators_to_check.append(t_id)
                     
-                    # Проверяем серии для выбранных озвучек
+                    # Проверяем серии
                     for t_id in translators_to_check:
                         await asyncio.sleep(1.0)
                         
-                        # Загружаем серии
                         seasons_data = await asyncio.to_thread(client.get_episodes_for_translator, item_id, t_id)
                         
                         max_s = -1
@@ -397,7 +405,6 @@ async def check_updates_task():
                         
                         last_tag = f"S{max_s}E{max_e}"
                         
-                        # Проверка прогресса
                         if "progress" not in state[item_id]: state[item_id]["progress"] = {}
                         if not isinstance(state[item_id]["progress"], dict): state[item_id]["progress"] = {}
                         
@@ -425,9 +432,96 @@ async def check_updates_task():
                     continue
 
             save_state(state)
-            logger.info("✅ Проверка завершена.")
+            logger.info("✅ Проверка сериалов завершена.")
             await asyncio.sleep(900)
 
         except Exception as e:
             logger.error(f"Global Loop Error: {e}")
+            await asyncio.sleep(60)
+
+# --- ФОНОВАЯ ЗАДАЧА (КОЛЛЕКЦИИ) ---
+async def check_collections_task():
+    """
+    Фоновая задача для проверки новых фильмов в коллекциях.
+    """
+    if not bot: return
+
+    logger.info("🕵️ Запуск мониторинга коллекций...")
+    await asyncio.sleep(10) # Даем фору старту
+
+    # Первый запуск: просто запоминаем, что есть
+    seen_data = load_seen_collections()
+    first_run = False
+    
+    if not seen_data:
+        first_run = True
+        logger.info("Первый запуск мониторинга коллекций: сохраняем состояние без уведомлений.")
+
+    while True:
+        try:
+            if not TELEGRAM_CHAT_ID:
+                await asyncio.sleep(30)
+                continue
+
+            for url in MONITORED_COLLECTIONS:
+                # Получаем список фильмов
+                items = await asyncio.to_thread(client.get_collection_items, url)
+                
+                if not items:
+                    continue
+
+                if url not in seen_data:
+                    seen_data[url] = []
+
+                seen_ids = set(seen_data[url])
+                new_items = []
+                current_ids = []
+
+                for item in items:
+                    item_id = str(item['id'])
+                    current_ids.append(item_id)
+                    
+                    if item_id not in seen_ids:
+                        if not first_run:
+                            new_items.append(item)
+                
+                # Обновляем базу увиденных
+                for i_id in current_ids:
+                    if i_id not in seen_ids:
+                        seen_data[url].append(i_id)
+
+                # Отправка уведомлений
+                if new_items:
+                    for item in reversed(new_items): 
+                        caption = (
+                            f"🆕 <b>Новинка в коллекции!</b>\n\n"
+                            f"🎬 <b>{item['title']}</b> ({item['year']})\n"
+                            f"ℹ️ {item['info']}\n"
+                            f"📊 {item['status']}\n\n"
+                            f"<a href='{item['url']}'>Смотреть на HDRezka</a>"
+                        )
+                        try:
+                            if item['poster']:
+                                await bot.send_photo(
+                                    chat_id=TELEGRAM_CHAT_ID,
+                                    photo=item['poster'],
+                                    caption=caption,
+                                    parse_mode="HTML"
+                                )
+                            else:
+                                await bot.send_message(
+                                    chat_id=TELEGRAM_CHAT_ID,
+                                    text=caption,
+                                    parse_mode="HTML",
+                                    disable_web_page_preview=False
+                                )
+                            await asyncio.sleep(1)
+                        except Exception as e:
+                            logger.error(f"Не удалось отправить уведомление о новинке: {e}")
+
+            save_seen_collections(seen_data)
+            await asyncio.sleep(1800) # Проверка раз в 30 минут
+
+        except Exception as e:
+            logger.error(f"Ошибка в цикле мониторинга коллекций: {e}")
             await asyncio.sleep(60)
