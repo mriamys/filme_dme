@@ -584,22 +584,23 @@
                     Lampa.Controller.collectionFocus(last_item, comp.html);
                 },
                 up: function() {
-                    // Если мы на кнопке сортировки -> Head
+                    // 1. Если мы УЖЕ на кнопке сортировки -> идем в Head
                     if (last_item && $(last_item).hasClass('rezka-sort-btn')) {
                         Lampa.Controller.toggle('head');
                         return;
                     }
                     
-                    if (Navigator.canmove('up')) {
-                        Navigator.move('up');
+                    // 2. ИСПРАВЛЕНИЕ: Если мы в сетке, всегда пытаемся попасть на кнопку сортировки,
+                    // игнорируя стандартную геометрию (Navigator.canmove), которая багует на левых элементах.
+                    var sortBtn = comp.html.find('.rezka-sort-btn');
+                    
+                    if (sortBtn.length) {
+                         // Принудительно ставим фокус на кнопку
+                         Navigator.focus(sortBtn);
                     } else {
-                        // Если вверх идти некуда, прыгаем на кнопку Сортировки
-                        var sortBtn = comp.html.find('.rezka-sort-btn');
-                        if (sortBtn.length) {
-                            Navigator.focus(sortBtn);
-                        } else {
-                            Lampa.Controller.toggle('head');
-                        }
+                         // Если кнопки вдруг нет, то стандартное поведение
+                         if (Navigator.canmove('up')) Navigator.move('up');
+                         else Lampa.Controller.toggle('head');
                     }
                 },
                 down: function() { if(Navigator.canmove('down')) Navigator.move('down'); },
@@ -613,12 +614,16 @@
 
         // --- ИСПРАВЛЕНИЕ ЗАВИСАНИЯ ПРИ ВОЗВРАТЕ ---
         comp.onResume = function() {
-            // При возврате всегда дергаем контроллер и обновляем скролл
+            // При возврате всегда дергаем контроллер и обновляем фокус принудительно
             if (scroll_wrapper && scroll_wrapper.length) {
-                // Небольшая задержка, чтобы Lampa успела отрисоваться
+                // Увеличили задержку до 150мс, чтобы анимация меню успела пройти
                 setTimeout(function() {
                     Lampa.Controller.toggle('rezka');
-                }, 50);
+                    // ПРИНУДИТЕЛЬНО возвращаем фокус на последний элемент
+                    if(last_item) {
+                        Lampa.Controller.collectionFocus(last_item, comp.html);
+                    }
+                }, 150);
             }
         };
 
