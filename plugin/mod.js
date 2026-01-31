@@ -915,15 +915,15 @@
                                 var payload = { post_id: rid, category: a.value };
                                 
                                 $.ajax({
-                                    url: MY_API_URL + actionUrl,
-                                    method: 'POST',
-                                    contentType: 'application/json',
-                                    data: JSON.stringify(payload),
-                                    success: function() {
+                                url: MY_API_URL + actionUrl,
+                                method: 'POST',
+                                contentType: 'application/json',
+                                data: JSON.stringify(payload),
+                                success: function() {
                                     Lampa.Loading.stop();
                                     Lampa.Noty.show('Готово');
                                     
-                                    // Принудительно обновляем локальный кэш и вид кнопки
+                                    // Логика обновления иконок (оставь её)
                                     if (a.value === 'delete') {
                                         libraryState.watching.delete(rid);
                                         libraryState.later.delete(rid);
@@ -939,13 +939,15 @@
                                         myBtn.find('svg').attr('fill', '#ffffff');
                                         myBtn.find('span').text('В папке');
                                     }
-                                    // БОЛЬШЕ НИЧЕГО НЕ ПИШЕМ - Lampa сама вернет фокус на кнопку
+                                    
+                                    // ТУТ БОЛЬШЕ НЕТ НИКАКИХ TOGGLE или CONTROLLER
                                 },
                                 error: function() {
                                     Lampa.Loading.stop();
                                     Lampa.Noty.show('Ошибка');
+                                    // ТУТ ТОЖЕ УДАЛИ TOGGLE
                                 }
-                                });
+                            });
                             }
                         });
                     });
