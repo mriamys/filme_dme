@@ -324,6 +324,14 @@ def serve_webapp():
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 
+@app.get("/api/check_status")
+def check_status(post_id: str):
+    # Это упрощенная логика. В идеале клиент Rezka должен уметь быстро проверять ID.
+    # Но так как у тебя пагинация и нет базы данных, это может быть медленно.
+    # Поэтому пока можно просто возвращать "unknown" или реализовать кэш на сервере.
+    # Если хочешь, я напишу реализацию с кэшем.
+    return {"status": "unknown"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)

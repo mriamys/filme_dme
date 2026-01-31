@@ -4,7 +4,7 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Smart Navigation Edition + Memory)...');
+    console.log('[Rezka] Plugin loading (Smart Navigation Edition + Memory + Poster Button)...');
 
     // --- ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ ЗАПОМИНАНИЯ ВЫБОРА ---
     var STORAGE_KEY = 'rezka_movie_choices';
@@ -338,7 +338,6 @@
 
         // --- ПОИСК С ПАМЯТЬЮ ---
         comp.search = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
-            // Проверяем, есть ли сохраненный выбор
             var savedChoice = rezkaUrl ? getChoice(rezkaUrl) : null;
             
             if (savedChoice) {
@@ -430,13 +429,10 @@
             Lampa.Select.show({
                 title: 'Выберите вариант', items: items,
                 onSelect: function(s) { 
-                    isModalOpen = false;
-                    
-                    // СОХРАНЯЕМ ВЫБОР
+                    isModalOpen = false; 
                     if (rezkaUrl) {
                         saveChoice(rezkaUrl, s.tmdb_id, s.media_type);
                     }
-                    
                     comp.openCard(s.tmdb_id, s.media_type); 
                     Lampa.Controller.toggle('rezka');
                 },
@@ -460,7 +456,6 @@
             
             items.push({ title: '🔍 Найти в TMDB', value: 'manual_search' });
             
-            // Проверяем, есть ли сохраненный выбор
             var savedChoice = getChoice(item.url);
             if (savedChoice) {
                 items.push({ title: '🔄 Сменить выбор фильма', value: 'change_choice' });
@@ -484,8 +479,9 @@
                         comp.search(ruName);
                         Lampa.Controller.toggle('rezka');
                     } else if (sel.value === 'change_choice') {
-                        // Удаляем сохраненный выбор и запускаем поиск заново
                         comp.forgetChoice(item.url);
+                        var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
+                        // Повторяем логику из card.on('hover:enter')
                         var rawTitle = item.title || '';
                         var yearMatch = rawTitle.match(/\((\d{4})\)/);
                         var year = yearMatch ? yearMatch[1] : '';
@@ -495,6 +491,7 @@
                         var titleRuClean = titleRu.split(':')[0].trim();
                         var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                         var mediaType = isTv ? 'tv' : 'movie';
+                        
                         comp.search(titleRuClean, titleEn, year, mediaType, item.url);
                         Lampa.Controller.toggle('rezka');
                     } else {
@@ -696,7 +693,6 @@
             Lampa.Controller.toggle('rezka');
         };
 
-        // --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ВОССТАНОВЛЕНИЕ ПОСЛЕ ВОЗВРАТА ИЗ МЕНЮ ---
         comp.resume = function() {
             console.log('[Rezka] ✅ RESUME called');
             
@@ -752,11 +748,9 @@
         function createComponent(name, category) {
             Lampa.Component.add(name, function() {
                 var c = new RezkaCategory(category);
-                
                 c.activity_resume = function() { 
                     if (c.resume) c.resume(); 
                 };
-                
                 return c;
             });
         }
@@ -783,6 +777,99 @@
                 menu.append(mi);
             });
         }, 1000);
+
+        // --- ИНТЕГРАЦИЯ В КАРТОЧКУ LAMPA (FULL) ---
+        Lampa.Listener.follow('full', function(e) {
+            if (e.type === 'complite') {
+                var render = e.object.activity.render();
+                var movie = e.data.movie;
+                var title = movie.title || movie.name;
+                var original_title = movie.original_title || movie.original_name;
+                var year = (movie.release_date || movie.first_air_date || '0000').substring(0,4);
+
+                // Ищем контейнер кнопок (поддержка разных версий Lampa)
+                var buttons = render.find('.full-start-new__buttons, .full-start__buttons');
+                
+                if (buttons.length) {
+                    // Создаем кнопку Rezka
+                    var myBtn = $('<div class="full-start__button selector view--category"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg><span>Rezka</span></div>');
+                    
+                    // Стиль кнопки - оранжевый как у Rezka
+                    myBtn.css({ color: '#d2a028', borderColor: '#d2a028' });
+                    
+                    buttons.append(myBtn);
+
+                    // 1. Ищем фильм на бэкенде
+                    var searchUrl = MY_API_URL + '/api/search?q=' + encodeURIComponent(title);
+                    
+                    $.ajax({
+                        url: searchUrl,
+                        dataType: 'json',
+                        success: function(results) {
+                            if (!results || !results.length) {
+                                myBtn.find('span').text('Не найдено');
+                                myBtn.css({ opacity: 0.5 });
+                                return;
+                            }
+
+                            // Пробуем найти точное совпадение по году
+                            var match = results.find(function(r) { 
+                                return r.year && r.year == year; 
+                            }) || results[0]; 
+
+                            var rezkaId = match.id;
+                            
+                            // Сохраняем ID
+                            myBtn.data('rezka-id', rezkaId);
+                            
+                            // Кнопка становится активной (визуально можно изменить фон если нужно)
+                            // myBtn.css({ background: 'rgba(210, 160, 40, 0.1)' });
+                        },
+                        error: function() {
+                            myBtn.find('span').text('Ошибка');
+                        }
+                    });
+
+                    // Клик по кнопке - открывает меню действий
+                    myBtn.on('hover:enter', function() {
+                        var rid = $(this).data('rezka-id');
+                        if (!rid) return;
+
+                        var menuItems = [
+                            { title: 'В Смотрю', value: 'watching' },
+                            { title: 'В Позже', value: 'later' },
+                            { title: 'В Архив', value: 'watched' },
+                            { title: 'Удалить', value: 'delete' }
+                        ];
+
+                        Lampa.Select.show({
+                            title: 'Rezka: Управление',
+                            items: menuItems,
+                            onSelect: function(a) {
+                                Lampa.Loading.start();
+                                var actionUrl = (a.value === 'delete') ? '/api/delete' : '/api/add';
+                                var payload = { post_id: rid, category: a.value };
+                                
+                                $.ajax({
+                                    url: MY_API_URL + actionUrl,
+                                    method: 'POST',
+                                    contentType: 'application/json',
+                                    data: JSON.stringify(payload),
+                                    success: function() {
+                                        Lampa.Loading.stop();
+                                        Lampa.Noty.show('Готово');
+                                    },
+                                    error: function() {
+                                        Lampa.Loading.stop();
+                                        Lampa.Noty.show('Ошибка');
+                                    }
+                                });
+                            }
+                        });
+                    });
+                }
+            }
+        });
 
         Lampa.Listener.follow('activity', function(e) {
             if (e.type === 'active' && e.component.indexOf('rezka_') === 0) {
