@@ -637,11 +637,6 @@
             var items = [];
             
             items.push({ title: '🔍 Найти в TMDB', value: 'manual_search' });
-            
-            var savedChoice = getChoice(item.url);
-            if (savedChoice) {
-                items.push({ title: '🔄 Сменить выбор фильма', value: 'change_choice' });
-            }
 
             if (isTv) items.push({ title: '📝 Отметки серий', value: 'episodes' });
             if (category !== 'watching') items.push({ title: '▶ В Смотрю', value: 'move_watching' });
@@ -657,22 +652,25 @@
                     if (sel.value === 'episodes') {
                         comp.episodes(item);
                     } else if (sel.value === 'manual_search') {
-                        var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
-                        comp.search(ruName);
-                        Lampa.Controller.toggle(controllerName);
-                    } else if (sel.value === 'change_choice') {
-                        comp.forgetChoice(item.url);
+                        // Умный поиск с запоминанием выбора
                         var rawTitle = item.title || '';
                         var yearMatch = rawTitle.match(/\((\d{4})\)/);
                         var year = yearMatch ? yearMatch[1] : '';
                         var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
                         var titleRu = titleNoYear.split('/')[0].trim();
                         var titleEn = (titleNoYear.split('/')[1] || '').trim();
-                        var titleRuClean = titleRu.split(':')[0].trim();
+                        
+                        // Убираем подзаголовки (после : и -) для более широкого поиска
+                        var titleRuShort = titleRu.split(':')[0].split('-')[0].trim();
+                        var titleEnShort = titleEn.split(':')[0].split('-')[0].trim();
+                        
                         var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                         var mediaType = isTv ? 'tv' : 'movie';
                         
-                        comp.search(titleRuClean, titleEn, year, mediaType, item.url);
+                        console.log('[Rezka] Manual search:', titleRuShort, '/', titleEnShort);
+                        
+                        // Поиск с сохранением выбора
+                        comp.manualSearch(titleRuShort, titleEnShort, year, mediaType, item.url);
                         Lampa.Controller.toggle(controllerName);
                     } else {
                         comp.action(sel.value, item);
@@ -685,18 +683,120 @@
             });
         };
 
-        comp.forgetChoice = function(rezkaUrl) {
-            try {
-                var choices = getStoredChoices();
-                if (choices[rezkaUrl]) {
-                    delete choices[rezkaUrl];
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(choices));
-                    console.log('[Rezka] 🗑️ Forgotten choice for:', rezkaUrl);
-                    Lampa.Noty.show('Выбор сброшен');
-                }
-            } catch(e) {
-                console.error('[Rezka] Error forgetting choice:', e);
+        // --- РУЧНОЙ ПОИСК С ЗАПОМИНАНИЕМ ВЫБОРА ---
+        comp.manualSearch = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
+            Lampa.Loading.start(function() {});
+            var allResults = [];
+            var seenIds = {};
+            var queries = [];
+            
+            // Добавляем запросы (английский приоритетнее для более широких результатов)
+            if (titleEn) queries.push(titleEn);
+            if (titleRu) queries.push(titleRu);
+            
+            if (queries.length === 0) { 
+                Lampa.Loading.stop(); 
+                Lampa.Noty.show('Ошибка'); 
+                return; 
             }
+
+            var completed = 0;
+
+            function checkComplete() {
+                completed++;
+                if (completed === queries.length) {
+                    Lampa.Loading.stop();
+                    
+                    if (allResults.length === 0) { 
+                        Lampa.Noty.show('Не найдено'); 
+                        return; 
+                    }
+                    
+                    console.log('[Rezka] Manual search results:', allResults.length);
+                    
+                    // Всегда показываем выбор для ручного поиска
+                    comp.showSelectionWithSave(allResults, mediaType, rezkaUrl);
+                }
+            }
+
+            // Выполняем поиск БЕЗ фильтра по году для большего выбора
+            queries.forEach(function(q) {
+                var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
+                          '?api_key=' + TMDB_API_KEY + 
+                          '&language=ru-RU&query=' + encodeURIComponent(q);
+                // НЕ добавляем year для более широкого поиска
+                
+                $.ajax({
+                    url: url, 
+                    timeout: 10000,
+                    success: function(data) {
+                        if (data.results) {
+                            data.results.forEach(function(item) {
+                                if (!seenIds[item.id]) { 
+                                    seenIds[item.id] = true; 
+                                    if(item.media_type !== 'person') {
+                                        allResults.push(item); 
+                                    }
+                                }
+                            });
+                        }
+                        checkComplete();
+                    },
+                    error: function() { 
+                        checkComplete(); 
+                    }
+                });
+            });
+        };
+
+        // --- ПОКАЗ ВЫБОРА С СОХРАНЕНИЕМ ---
+        comp.showSelectionWithSave = function(results, mediaType, rezkaUrl) {
+            if (isModalOpen) return; 
+            isModalOpen = true;
+            
+            // Сортируем по популярности и году
+            var sortedResults = results.sort(function(a, b) {
+                var yearA = parseInt((a.release_date || a.first_air_date || '0').substring(0, 4)) || 0;
+                var yearB = parseInt((b.release_date || b.first_air_date || '0').substring(0, 4)) || 0;
+                var popA = a.popularity || 0;
+                var popB = b.popularity || 0;
+                
+                // Сначала по году (новые), потом по популярности
+                if (yearB !== yearA) return yearB - yearA;
+                return popB - popA;
+            });
+            
+            var items = sortedResults.map(function(item) {
+                var yr = (item.release_date || item.first_air_date || '').substring(0, 4);
+                var type = item.media_type === 'tv' ? 'TV' : 'Фильм';
+                return {
+                    title: (item.title || item.name) + ' (' + (yr || '?') + ') ' + (mediaType === 'multi' ? '['+type+']' : ''),
+                    description: (item.overview || '').substring(0, 150),
+                    tmdb_id: item.id,
+                    media_type: item.media_type || mediaType
+                };
+            });
+            
+            Lampa.Select.show({
+                title: 'Выберите вариант', 
+                items: items,
+                onSelect: function(s) { 
+                    isModalOpen = false;
+                    
+                    // Сохраняем выбор
+                    if (rezkaUrl) {
+                        saveChoice(rezkaUrl, s.tmdb_id, s.media_type);
+                        console.log('[Rezka] ✅ Saved manual choice:', rezkaUrl, '→', s.tmdb_id);
+                    }
+                    
+                    comp.openCard(s.tmdb_id, s.media_type); 
+                    Lampa.Controller.toggle(controllerName);
+                },
+                onBack: function() { 
+                    isModalOpen = false; 
+                    Lampa.Controller.toggle(controllerName); 
+                }
+            });
         };
 
         // --- СЕРИИ ---
