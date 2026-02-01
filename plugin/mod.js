@@ -101,6 +101,7 @@
         var all_items = []; 
         var current_sort = 'added'; 
         var isModalOpen = false;
+        var controllerName = 'rezka_' + category;
 
         var endpoints = {
             'watching': '/api/watching',
@@ -222,7 +223,7 @@
                     last_item = sortBtn;
                 }
                 
-                Lampa.Controller.toggle('rezka');
+                Lampa.Controller.toggle(controllerName);
             }, 200);
         };
         
@@ -290,12 +291,12 @@
                         comp.loadData();
                     } else {
                         isModalOpen = false;
-                        Lampa.Controller.toggle('rezka');
+                        Lampa.Controller.toggle(controllerName);
                     }
                 },
                 onBack: function() {
                     isModalOpen = false;
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                 }
             });
         };
@@ -508,11 +509,11 @@
                         saveChoice(rezkaUrl, s.tmdb_id, s.media_type);
                     }
                     comp.openCard(s.tmdb_id, s.media_type); 
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                 },
                 onBack: function() { 
                     isModalOpen = false; 
-                    Lampa.Controller.toggle('rezka'); 
+                    Lampa.Controller.toggle(controllerName); 
                 }
             });
         };
@@ -551,7 +552,7 @@
                     } else if (sel.value === 'manual_search') {
                         var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
                         comp.search(ruName);
-                        Lampa.Controller.toggle('rezka');
+                        Lampa.Controller.toggle(controllerName);
                     } else if (sel.value === 'change_choice') {
                         comp.forgetChoice(item.url);
                         var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
@@ -565,14 +566,14 @@
                         var mediaType = isTv ? 'tv' : 'movie';
                         
                         comp.search(titleRuClean, titleEn, year, mediaType, item.url);
-                        Lampa.Controller.toggle('rezka');
+                        Lampa.Controller.toggle(controllerName);
                     } else {
                         comp.action(sel.value, item);
                     }
                 },
                 onBack: function() { 
                     isModalOpen = false;
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                 }
             });
         };
@@ -603,7 +604,7 @@
                     if (!details || !details.seasons) { 
                         Lampa.Noty.show('Ошибка'); 
                         isModalOpen = false; 
-                        Lampa.Controller.toggle('rezka');
+                        Lampa.Controller.toggle(controllerName);
                         return; 
                     }
                     var seasons = Object.keys(details.seasons).sort(function(a, b) { return parseInt(a) - parseInt(b); });
@@ -615,10 +616,10 @@
                     Lampa.Select.show({
                         title: 'Выберите сезон', items: items,
                         onSelect: function(sel) { comp.episodeList(item, sel.value, sel.episodes); },
-                        onBack: function() { isModalOpen = false; Lampa.Controller.toggle('rezka'); }
+                        onBack: function() { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
                     });
                 },
-                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка'); isModalOpen = false; Lampa.Controller.toggle('rezka'); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
@@ -637,7 +638,7 @@
                     if (sel.value === 'all') comp.markAll(item, sel.season);
                     else comp.markOne(item, sel.season, sel.value);
                 },
-                onBack: function() { isModalOpen = false; Lampa.Controller.toggle('rezka'); }
+                onBack: function() { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
@@ -650,10 +651,10 @@
                     Lampa.Loading.stop(); 
                     Lampa.Noty.show(res.success ? 'Сохранено' : 'Ошибка'); 
                     isModalOpen = false; 
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                     if (res.success) comp.loadData();
                 },
-                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle('rezka'); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
@@ -666,10 +667,10 @@
                     Lampa.Loading.stop(); 
                     Lampa.Noty.show(res.success ? 'Сезон отмечен' : 'Ошибка'); 
                     isModalOpen = false; 
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                     if (res.success) comp.loadData(); 
                 },
-                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle('rezka'); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
@@ -695,14 +696,14 @@
                     Lampa.Loading.stop(); 
                     Lampa.Noty.show('Выполнено');
                     updateLibraryState(); // Обновляем кэш
-                    Lampa.Controller.toggle('rezka');
+                    Lampa.Controller.toggle(controllerName);
                     setTimeout(function() { comp.loadData(); }, 500);
                 },
                 error: function(err) { 
                     Lampa.Loading.stop(); 
                     console.error('[Rezka] Action Error:', err);
                     Lampa.Noty.show('Ошибка сети: ' + err.status); 
-                    Lampa.Controller.toggle('rezka'); 
+                    Lampa.Controller.toggle(controllerName); 
                 }
             });
         };
@@ -713,7 +714,7 @@
 
         // --- ГЛАВНЫЙ КОНТРОЛЛЕР ---
         comp.start = function() {
-            Lampa.Controller.add('rezka', {
+            Lampa.Controller.add(controllerName, {
                 toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
                     if (!last_item || !$(last_item).parent().length || !$(last_item).is(':visible')) {
@@ -763,7 +764,7 @@
                 back: function() { Lampa.Activity.backward(); }
             });
 
-            Lampa.Controller.toggle('rezka');
+            Lampa.Controller.toggle(controllerName);
         };
 
         comp.resume = function() {
@@ -961,11 +962,12 @@
             if (e.type === 'active' && e.component && e.component.indexOf('rezka_') === 0) {
                 console.log('[Rezka] Activity active:', e.component);
                 var inst = _rezkaInstances[e.component];
+                var compName = e.component;
                 setTimeout(function() {
                     if (inst && inst.resume) {
-                        inst.resume(); // resume пересоздаст контроллер
+                        inst.resume();
                     } else {
-                        Lampa.Controller.toggle('rezka');
+                        Lampa.Controller.toggle(compName);
                     }
                 }, 100);
             }
@@ -983,7 +985,7 @@
                             if (inst && inst.resume) {
                                 inst.resume();
                             } else {
-                                Lampa.Controller.toggle('rezka');
+                                Lampa.Controller.toggle(act.component);
                             }
                         }
                     } catch(e) {}
