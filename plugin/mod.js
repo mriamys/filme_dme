@@ -768,6 +768,7 @@
 
         comp.resume = function() {
             console.log('[Rezka] resume called');
+            // Пересоздаём контроллер заново, а не просто toggle
             comp.start();
         };
 
@@ -791,6 +792,9 @@
         function createComponent(name, category) {
             Lampa.Component.add(name, function() {
                 var c = new RezkaCategory(category);
+                // Регистрируем экземпляр в глобальном реестре
+                window.__rezka_instances__ = window.__rezka_instances__ || {};
+                window.__rezka_instances__[name] = c;
                 c.activity_resume = function() { 
                     if (c.resume) c.resume(); 
                 };
@@ -950,11 +954,19 @@
             }
         });
 
+        // Реестр живых экземпляров компонентов для восстановления контроллера
+        var _rezkaInstances = window.__rezka_instances__ = window.__rezka_instances__ || {};
+
         Lampa.Listener.follow('activity', function(e) {
             if (e.type === 'active' && e.component && e.component.indexOf('rezka_') === 0) {
                 console.log('[Rezka] Activity active:', e.component);
-                setTimeout(function() { 
-                    Lampa.Controller.toggle('rezka'); 
+                var inst = _rezkaInstances[e.component];
+                setTimeout(function() {
+                    if (inst && inst.resume) {
+                        inst.resume(); // resume пересоздаст контроллер
+                    } else {
+                        Lampa.Controller.toggle('rezka');
+                    }
                 }, 100);
             }
         });
@@ -962,13 +974,17 @@
         // Перехват: когда меню отдаёт контроль вправо обратно на компонент
         Lampa.Listener.follow('menu', function(e) {
             if (e.type === 'close') {
-                // Меню закрылось — проверяем через тик что активен наш компонент
                 setTimeout(function() {
                     try {
                         var act = Lampa.Activity.current();
                         if (act && act.component && act.component.indexOf('rezka_') === 0) {
                             console.log('[Rezka] Menu closed, restoring rezka controller');
-                            Lampa.Controller.toggle('rezka');
+                            var inst = _rezkaInstances[act.component];
+                            if (inst && inst.resume) {
+                                inst.resume();
+                            } else {
+                                Lampa.Controller.toggle('rezka');
+                            }
                         }
                     } catch(e) {}
                 }, 150);
