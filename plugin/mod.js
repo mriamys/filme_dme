@@ -968,6 +968,15 @@
                         }
                     }
 
+                    // Функция нормализации названия для точного сравнения
+                    function normalizeTitle(str) {
+                        if (!str) return '';
+                        return str.toLowerCase()
+                            .replace(/[^\wа-яё\s]/gi, '') // Убираем спецсимволы
+                            .replace(/\s+/g, ' ')          // Множественные пробелы в один
+                            .trim();
+                    }
+
                     $.ajax({
                         url: searchUrl,
                         dataType: 'json',
@@ -978,17 +987,46 @@
                                 return;
                             }
 
-                            // Точное совпадение по году
-                            var exactMatch = results.find(function(r) { return r.year && r.year == year; });
+                            console.log('[Rezka] Poster search results:', results.length, 'for title:', title);
 
-                            if (exactMatch) {
-                                // Точно нашли — сразу сетим ID
-                                myBtn.data('rezka-id', String(exactMatch.id));
-                                updateBtnState(String(exactMatch.id));
+                            var selectedMatch = null;
+                            var normalizedSearchTitle = normalizeTitle(title);
+
+                            // 1. Проверяем точное совпадение названия (1 в 1)
+                            var exactTitleMatches = results.filter(function(r) {
+                                var resultTitle = normalizeTitle(r.title);
+                                return resultTitle === normalizedSearchTitle;
+                            });
+
+                            console.log('[Rezka] Exact title matches:', exactTitleMatches.length);
+
+                            if (exactTitleMatches.length === 1) {
+                                // Одно точное совпадение названия - берём его автоматически
+                                selectedMatch = exactTitleMatches[0];
+                                console.log('[Rezka] ✅ Auto-selected: exact title match');
+                            } else if (exactTitleMatches.length > 1) {
+                                // Несколько с одинаковым названием - берём самый свежий (по году)
+                                selectedMatch = exactTitleMatches.sort(function(a, b) {
+                                    var yearA = parseInt(a.year) || 0;
+                                    var yearB = parseInt(b.year) || 0;
+                                    return yearB - yearA; // Сначала новые
+                                })[0];
+                                console.log('[Rezka] ✅ Auto-selected: latest of exact matches, year:', selectedMatch.year);
+                            } else if (results.length === 1) {
+                                // Только один результат вообще - берём его
+                                selectedMatch = results[0];
+                                console.log('[Rezka] ✅ Auto-selected: single result');
+                            }
+
+                            if (selectedMatch) {
+                                // Нашли точное совпадение - сразу сетим ID
+                                myBtn.data('rezka-id', String(selectedMatch.id));
+                                updateBtnState(String(selectedMatch.id));
+                                console.log('[Rezka] Set rezka-id:', selectedMatch.id, selectedMatch.title);
                             } else {
-                                // Нет точного — сохраняем весь список, ID не сетим
-                                // Кнопка остаётся "Папки", при нажатии будет выбор
+                                // Неоднозначность - сохраняем список для выбора
                                 myBtn.data('rezka-candidates', results);
+                                console.log('[Rezka] Multiple ambiguous results, showing selection on click');
                             }
                         },
                         error: function() {
@@ -1069,7 +1107,14 @@
                         var candidates = myBtn.data('rezka-candidates');
                         if (!candidates || !candidates.length) return;
 
-                        var selectItems = candidates.map(function(r) {
+                        // Сортируем по году (новые сначала)
+                        var sortedCandidates = candidates.sort(function(a, b) {
+                            var yearA = parseInt(a.year) || 0;
+                            var yearB = parseInt(b.year) || 0;
+                            return yearB - yearA;
+                        });
+
+                        var selectItems = sortedCandidates.map(function(r) {
                             var inLib = libraryState.watching.has(String(r.id)) ||
                                         libraryState.later.has(String(r.id)) ||
                                         libraryState.watched.has(String(r.id));
