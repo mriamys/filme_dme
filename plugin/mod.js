@@ -411,8 +411,9 @@
             return card;
         };
 
-        // --- ПОИСК С ПАМЯТЬЮ ---
+        // --- УЛУЧШЕННЫЙ ПОИСК С УМНЫМ ВЫБОРОМ ---
         comp.search = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
+            // Проверяем сохраненный выбор
             var savedChoice = rezkaUrl ? getChoice(rezkaUrl) : null;
             
             if (savedChoice) {
@@ -426,70 +427,169 @@
             var seenIds = {};
             var queries = [];
             
+            // Если поиск вызван вручную (из меню), только 1 параметр
             if (arguments.length === 1 && typeof titleRu === 'string') {
                 queries.push(titleRu);
                 mediaType = 'multi'; 
                 year = '';
                 rezkaUrl = null;
             } else {
+                // Обычный поиск из карточки папки
                 if (titleEn) queries.push(titleEn);
                 if (titleRu) queries.push(titleRu);
             }
 
             var completed = 0;
-            if (queries.length === 0) { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка'); return; }
+            if (queries.length === 0) { 
+                Lampa.Loading.stop(); 
+                Lampa.Noty.show('Ошибка'); 
+                return; 
+            }
+
+            // Функция нормализации названия для сравнения
+            function normalizeTitle(title) {
+                if (!title) return '';
+                return title.toLowerCase()
+                    .replace(/[^\wа-яё\s]/gi, '') // Убираем спецсимволы
+                    .replace(/\s+/g, ' ')         // Множественные пробелы в один
+                    .trim();
+            }
 
             function checkComplete() {
                 completed++;
                 if (completed === queries.length) {
                     Lampa.Loading.stop();
-                    if (allResults.length === 0) { Lampa.Noty.show('Не найдено'); return; }
                     
-                    var exactMatch = null;
-                    if (year && mediaType !== 'multi') {
-                        exactMatch = allResults.find(function(r) {
-                            return (r.release_date || r.first_air_date || '').substring(0, 4) === year;
-                        });
+                    if (allResults.length === 0) { 
+                        Lampa.Noty.show('Не найдено'); 
+                        return; 
                     }
                     
-                    if (exactMatch) {
-                        var mt = mediaType === 'multi' ? exactMatch.media_type : mediaType;
-                        if (rezkaUrl) saveChoice(rezkaUrl, exactMatch.id, mt);
-                        comp.openCard(exactMatch.id, mt);
-                    } else if (allResults.length === 1) {
-                        var mt = mediaType === 'multi' ? allResults[0].media_type : mediaType;
-                        if (rezkaUrl) saveChoice(rezkaUrl, allResults[0].id, mt);
-                        comp.openCard(allResults[0].id, mt);
+                    console.log('[Rezka] 🔍 Search results:', allResults.length);
+                    
+                    // УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА
+                    var selectedResult = null;
+                    
+                    // 1. Если есть год - пытаемся найти точное совпадение по году
+                    if (year && mediaType !== 'multi') {
+                        var yearMatches = allResults.filter(function(r) {
+                            var resultYear = (r.release_date || r.first_air_date || '').substring(0, 4);
+                            return resultYear === year;
+                        });
+                        
+                        console.log('[Rezka] 📅 Year matches (' + year + '):', yearMatches.length);
+                        
+                        if (yearMatches.length === 1) {
+                            // Один результат с точным годом - берем его
+                            selectedResult = yearMatches[0];
+                            console.log('[Rezka] ✅ Exact year match found');
+                        } else if (yearMatches.length > 1) {
+                            // Несколько результатов с одним годом - проверяем точное совпадение названия
+                            var normalizedSearchTitle = normalizeTitle(titleRu);
+                            
+                            var exactTitleMatch = yearMatches.find(function(r) {
+                                var resultTitle = normalizeTitle(r.title || r.name || '');
+                                var resultOriginalTitle = normalizeTitle(r.original_title || r.original_name || '');
+                                
+                                return resultTitle === normalizedSearchTitle || 
+                                       resultOriginalTitle === normalizedSearchTitle;
+                            });
+                            
+                            if (exactTitleMatch) {
+                                selectedResult = exactTitleMatch;
+                                console.log('[Rezka] ✅ Exact title+year match found');
+                            } else {
+                                // Нет точного совпадения - покажем выбор только из результатов с правильным годом
+                                console.log('[Rezka] ⚠️ Multiple year matches, showing selection');
+                                comp.showSelection(yearMatches, mediaType, rezkaUrl);
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // 2. Если год не помог или его нет - проверяем точное совпадение названия
+                    if (!selectedResult) {
+                        var normalizedSearchTitle = normalizeTitle(titleRu);
+                        var normalizedSearchTitleEn = normalizeTitle(titleEn);
+                        
+                        var exactMatches = allResults.filter(function(r) {
+                            var resultTitle = normalizeTitle(r.title || r.name || '');
+                            var resultOriginalTitle = normalizeTitle(r.original_title || r.original_name || '');
+                            
+                            return resultTitle === normalizedSearchTitle || 
+                                   resultOriginalTitle === normalizedSearchTitle ||
+                                   (normalizedSearchTitleEn && (resultTitle === normalizedSearchTitleEn || resultOriginalTitle === normalizedSearchTitleEn));
+                        });
+                        
+                        console.log('[Rezka] 📝 Exact title matches:', exactMatches.length);
+                        
+                        if (exactMatches.length === 1) {
+                            selectedResult = exactMatches[0];
+                            console.log('[Rezka] ✅ Exact title match found (no year)');
+                        } else if (exactMatches.length > 1) {
+                            // Несколько точных совпадений названия - берем самый популярный или первый
+                            selectedResult = exactMatches.sort(function(a, b) {
+                                return (b.popularity || 0) - (a.popularity || 0);
+                            })[0];
+                            console.log('[Rezka] ✅ Multiple exact matches, selected most popular');
+                        }
+                    }
+                    
+                    // 3. Если только один результат вообще - берем его
+                    if (!selectedResult && allResults.length === 1) {
+                        selectedResult = allResults[0];
+                        console.log('[Rezka] ✅ Only one result, auto-selecting');
+                    }
+                    
+                    // 4. Если нашли подходящий результат - открываем
+                    if (selectedResult) {
+                        var mt = mediaType === 'multi' ? selectedResult.media_type : mediaType;
+                        if (rezkaUrl) {
+                            saveChoice(rezkaUrl, selectedResult.id, mt);
+                        }
+                        comp.openCard(selectedResult.id, mt);
                     } else {
+                        // Иначе показываем выбор
+                        console.log('[Rezka] ℹ️ Multiple ambiguous results, showing selection');
                         comp.showSelection(allResults, mediaType, rezkaUrl);
                     }
                 }
             }
 
+            // Выполняем поиск по всем запросам
             queries.forEach(function(q) {
                 var url = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
-                if (year && mediaType !== 'multi') url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+                if (year && mediaType !== 'multi') {
+                    url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+                }
                 
                 $.ajax({
-                    url: url, timeout: 10000,
+                    url: url, 
+                    timeout: 10000,
                     success: function(data) {
                         if (data.results) {
                             data.results.forEach(function(item) {
                                 if (!seenIds[item.id]) { 
                                     seenIds[item.id] = true; 
-                                    if(item.media_type !== 'person') allResults.push(item); 
+                                    if(item.media_type !== 'person') {
+                                        allResults.push(item); 
+                                    }
                                 }
                             });
                         }
                         checkComplete();
                     },
-                    error: function() { checkComplete(); }
+                    error: function() { 
+                        checkComplete(); 
+                    }
                 });
             });
         };
 
         comp.showSelection = function(results, mediaType, rezkaUrl) {
-            if (isModalOpen) return; isModalOpen = true;
+            if (isModalOpen) return; 
+            isModalOpen = true;
+            
             var items = results.map(function(item) {
                 var yr = (item.release_date || item.first_air_date || '').substring(0, 4);
                 var type = item.media_type === 'tv' ? 'TV' : 'Фильм';
@@ -502,7 +602,8 @@
             });
             
             Lampa.Select.show({
-                title: 'Выберите вариант', items: items,
+                title: 'Выберите вариант', 
+                items: items,
                 onSelect: function(s) { 
                     isModalOpen = false; 
                     if (rezkaUrl) {
@@ -519,7 +620,13 @@
         };
 
         comp.openCard = function(tmdbId, mediaType) {
-            Lampa.Activity.push({ component: 'full', id: tmdbId, method: mediaType, source: 'tmdb', card: { id: tmdbId, source: 'tmdb' } });
+            Lampa.Activity.push({ 
+                component: 'full', 
+                id: tmdbId, 
+                method: mediaType, 
+                source: 'tmdb', 
+                card: { id: tmdbId, source: 'tmdb' } 
+            });
         };
 
         // --- МЕНЮ УПРАВЛЕНИЯ ---
@@ -555,8 +662,8 @@
                         Lampa.Controller.toggle(controllerName);
                     } else if (sel.value === 'change_choice') {
                         comp.forgetChoice(item.url);
-                        var ruName = item.title.replace(/\s*\(\d{4}\)/, '').split('/')[0].trim();
-                        var yearMatch = (item.title || '').match(/\((\d{4})\)/);
+                        var rawTitle = item.title || '';
+                        var yearMatch = rawTitle.match(/\((\d{4})\)/);
                         var year = yearMatch ? yearMatch[1] : '';
                         var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
                         var titleRu = titleNoYear.split('/')[0].trim();
