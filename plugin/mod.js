@@ -847,6 +847,20 @@
                     // 1. Ищем фильм на бэкенде
                     var searchUrl = MY_API_URL + '/api/search?q=' + encodeURIComponent(title);
                     
+                    // Обновляет состояние кнопки по rezkaId
+                    function updateBtnState(rezkaId) {
+                        var inLib = libraryState.watching.has(rezkaId) ||
+                                    libraryState.later.has(rezkaId) ||
+                                    libraryState.watched.has(rezkaId);
+                        if (inLib) {
+                            myBtn.find('svg').attr('fill', '#ffffff');
+                            myBtn.find('span').text('В папке');
+                        } else {
+                            myBtn.find('svg').attr('fill', 'none');
+                            myBtn.find('span').text('Папки');
+                        }
+                    }
+
                     $.ajax({
                         url: searchUrl,
                         dataType: 'json',
@@ -857,23 +871,17 @@
                                 return;
                             }
 
-                            // Поиск точного совпадения по году
-                            var match = results.find(function(r) { return r.year && r.year == year; }) || results[0]; 
-                            var rezkaId = String(match.id); 
-                            
-                            // Сохраняем ID
-                            myBtn.data('rezka-id', rezkaId);
-                            
-                            // 2. ПРОВЕРЯЕМ СТАТУС В БИБЛИОТЕКЕ
-                            var inLib = false;
-                            if (libraryState.watching.has(rezkaId)) inLib = true;
-                            if (libraryState.later.has(rezkaId)) inLib = true;
-                            if (libraryState.watched.has(rezkaId)) inLib = true;
+                            // Точное совпадение по году
+                            var exactMatch = results.find(function(r) { return r.year && r.year == year; });
 
-                            if (inLib) {
-                                // Если есть в папке - закрашиваем иконку и меняем текст
-                                myBtn.find('svg').attr('fill', '#ffffff');
-                                myBtn.find('span').text('В папке');
+                            if (exactMatch) {
+                                // Точно нашли — сразу сетим ID
+                                myBtn.data('rezka-id', String(exactMatch.id));
+                                updateBtnState(String(exactMatch.id));
+                            } else {
+                                // Нет точного — сохраняем весь список, ID не сетим
+                                // Кнопка остаётся "Папки", при нажатии будет выбор
+                                myBtn.data('rezka-candidates', results);
                             }
                         },
                         error: function() {
@@ -881,19 +889,14 @@
                         }
                     });
 
-                    // Клик по кнопке
-                    myBtn.on('hover:enter', function() {
-                        var rid = $(this).data('rezka-id');
-                        if (!rid) return;
+                    function restoreFocus() {
+                        setTimeout(function() {
+                            Lampa.Controller.toggle('full_start');
+                        }, 100);
+                    }
 
-                        var btnRef = myBtn;
-
-                        function restoreFocus() {
-                            setTimeout(function() {
-                                Lampa.Controller.toggle('full_start');
-                            }, 100);
-                        }
-
+                    // Показывает меню папок для конкретного rezkaId
+                    function showFolderMenu(rid) {
                         var menuItems = [
                             { title: (libraryState.watching.has(rid) ? '✅ ' : '') + 'В Смотрю', value: 'watching' },
                             { title: (libraryState.later.has(rid) ? '✅ ' : '') + 'В Позже', value: 'later' },
@@ -908,40 +911,75 @@
                                 Lampa.Loading.start();
                                 var actionUrl = (a.value === 'delete') ? '/api/delete' : '/api/add';
                                 var payload = { post_id: rid, category: a.value };
-                                
+
                                 $.ajax({
-                                url: MY_API_URL + actionUrl,
-                                method: 'POST',
-                                contentType: 'application/json',
-                                data: JSON.stringify(payload),
-                                success: function() {
-                                    Lampa.Loading.stop();
-                                    Lampa.Noty.show('Готово');
-                                    
-                                    if (a.value === 'delete') {
-                                        libraryState.watching.delete(rid);
-                                        libraryState.later.delete(rid);
-                                        libraryState.watched.delete(rid);
-                                        btnRef.find('svg').attr('fill', 'none');
-                                        btnRef.find('span').text('Папки');
-                                    } else {
-                                        libraryState.watching.delete(rid);
-                                        libraryState.later.delete(rid);
-                                        libraryState.watched.delete(rid);
-                                        libraryState[a.value].add(rid);
-                                        
-                                        btnRef.find('svg').attr('fill', '#ffffff');
-                                        btnRef.find('span').text('В папке');
+                                    url: MY_API_URL + actionUrl,
+                                    method: 'POST',
+                                    contentType: 'application/json',
+                                    data: JSON.stringify(payload),
+                                    success: function() {
+                                        Lampa.Loading.stop();
+                                        Lampa.Noty.show('Готово');
+
+                                        if (a.value === 'delete') {
+                                            libraryState.watching.delete(rid);
+                                            libraryState.later.delete(rid);
+                                            libraryState.watched.delete(rid);
+                                        } else {
+                                            libraryState.watching.delete(rid);
+                                            libraryState.later.delete(rid);
+                                            libraryState.watched.delete(rid);
+                                            libraryState[a.value].add(rid);
+                                        }
+
+                                        updateBtnState(rid);
+                                        restoreFocus();
+                                    },
+                                    error: function() {
+                                        Lampa.Loading.stop();
+                                        Lampa.Noty.show('Ошибка');
+                                        restoreFocus();
                                     }
-                                    
-                                    restoreFocus();
-                                },
-                                error: function() {
-                                    Lampa.Loading.stop();
-                                    Lampa.Noty.show('Ошибка');
-                                    restoreFocus();
-                                }
-                            });
+                                });
+                            },
+                            onBack: function() {
+                                restoreFocus();
+                            }
+                        });
+                    }
+
+                    // Клик по кнопке
+                    myBtn.on('hover:enter', function() {
+                        var rid = myBtn.data('rezka-id');
+
+                        if (rid) {
+                            // Точное совпадение уже есть — сразу меню папок
+                            showFolderMenu(rid);
+                            return;
+                        }
+
+                        // Нет точного — показываем выбор из найденных
+                        var candidates = myBtn.data('rezka-candidates');
+                        if (!candidates || !candidates.length) return;
+
+                        var selectItems = candidates.map(function(r) {
+                            var inLib = libraryState.watching.has(String(r.id)) ||
+                                        libraryState.later.has(String(r.id)) ||
+                                        libraryState.watched.has(String(r.id));
+                            return {
+                                title: (inLib ? '📁 ' : '') + r.title + ' (' + (r.year || '?') + ')',
+                                value: String(r.id)
+                            };
+                        });
+
+                        Lampa.Select.show({
+                            title: 'Папки: Выберите фильм',
+                            items: selectItems,
+                            onSelect: function(chosen) {
+                                // Юзер выбрал — сетим как основной ID и показываем папки
+                                myBtn.data('rezka-id', chosen.value);
+                                updateBtnState(chosen.value);
+                                showFolderMenu(chosen.value);
                             },
                             onBack: function() {
                                 restoreFocus();
