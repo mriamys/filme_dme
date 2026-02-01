@@ -59,6 +59,19 @@
         }
     }
     
+    function deleteChoice(rezkaUrl) {
+        try {
+            var choices = getStoredChoices();
+            if (choices[rezkaUrl]) {
+                delete choices[rezkaUrl];
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(choices));
+                console.log('[Rezka] 🗑️ Deleted invalid choice:', rezkaUrl);
+            }
+        } catch(e) {
+            console.error('[Rezka] Error deleting choice:', e);
+        }
+    }
+    
     function getChoice(rezkaUrl) {
         var choices = getStoredChoices();
         return choices[rezkaUrl] || null;
@@ -418,9 +431,40 @@
             
             if (savedChoice) {
                 console.log('[Rezka] 🎯 Found saved choice:', savedChoice);
-                comp.openCard(savedChoice.tmdb_id, savedChoice.media_type);
+                
+                // Проверяем, существует ли эта карточка в TMDB
+                $.ajax({
+                    url: 'https://api.themoviedb.org/3/' + savedChoice.media_type + '/' + savedChoice.tmdb_id + 
+                         '?api_key=' + TMDB_API_KEY + '&language=ru-RU',
+                    timeout: 5000,
+                    success: function(data) {
+                        if (data && data.id) {
+                            // Карточка существует - открываем
+                            console.log('[Rezka] ✅ Saved choice is valid, opening card');
+                            comp.openCard(savedChoice.tmdb_id, savedChoice.media_type);
+                        } else {
+                            // Карточка не найдена - удаляем выбор и ищем заново
+                            console.log('[Rezka] ⚠️ Saved choice is invalid, searching again');
+                            deleteChoice(rezkaUrl);
+                            comp.performSearch(titleRu, titleEn, year, mediaType, rezkaUrl);
+                        }
+                    },
+                    error: function() {
+                        // Ошибка при проверке - удаляем выбор и ищем заново
+                        console.log('[Rezka] ❌ Error checking saved choice, searching again');
+                        deleteChoice(rezkaUrl);
+                        comp.performSearch(titleRu, titleEn, year, mediaType, rezkaUrl);
+                    }
+                });
                 return;
             }
+            
+            // Нет сохранённого выбора - ищем обычным образом
+            comp.performSearch(titleRu, titleEn, year, mediaType, rezkaUrl);
+        };
+
+        // --- ОСНОВНАЯ ЛОГИКА ПОИСКА ---
+        comp.performSearch = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
             
             Lampa.Loading.start(function() {});
             var allResults = [];
