@@ -321,7 +321,8 @@
             var year = yearMatch ? yearMatch[1] : (item.year || '');
             var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
             var titleRu = titleNoYear.split('/')[0].trim();
-            var titleEn = (titleNoYear.split('/')[1] || '').trim();
+            var titleEnRaw = (titleNoYear.split('/')[1] || '').trim();
+            var titleEn = /[а-яёА-ЯЁ]/.test(titleEnRaw) ? '' : titleEnRaw;
             var titleRuClean = titleRu.split(':')[0].trim();
 
             var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
@@ -702,7 +703,8 @@
                         var year = yearMatch ? yearMatch[1] : '';
                         var titleNoYear = rawTitle.replace(/\s*\(\d{4}\)/, '').trim();
                         var titleRu = titleNoYear.split('/')[0].trim();
-                        var titleEn = (titleNoYear.split('/')[1] || '').trim();
+                        var titleEnRaw = (titleNoYear.split('/')[1] || '').trim();
+                        var titleEn = /[а-яёА-ЯЁ]/.test(titleEnRaw) ? '' : titleEnRaw;
                         
                         // Убираем подзаголовки (после : и -) для более широкого поиска
                         var titleRuShort = titleRu.split(':')[0].split('-')[0].trim();
