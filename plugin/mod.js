@@ -500,6 +500,8 @@
                     .trim();
             }
 
+            var yearFallbackUsed = false; // флаг: был ли fallback без года
+
             function checkComplete() {
                 completed++;
                 if (completed === queries.length) {
@@ -510,8 +512,16 @@
                         return; 
                     }
                     
-                    console.log('[Rezka] 🔍 Search results:', allResults.length);
+                    console.log('[Rezka] 🔍 Search results:', allResults.length, yearFallbackUsed ? '(year fallback used)' : '');
                     
+                    // Если год из rezka не совпал и мы упали в fallback — год ненадёжен,
+                    // автоselect по году/названию опасен, сразу показываем выбор
+                    if (yearFallbackUsed) {
+                        console.log('[Rezka] ⚠️ Year fallback was used, showing selection');
+                        comp.showSelection(allResults, mediaType, rezkaUrl);
+                        return;
+                    }
+
                     // УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА
                     var selectedResult = null;
                     
@@ -525,11 +535,9 @@
                         console.log('[Rezka] 📅 Year matches (' + year + '):', yearMatches.length);
                         
                         if (yearMatches.length === 1) {
-                            // Один результат с точным годом - берем его
                             selectedResult = yearMatches[0];
                             console.log('[Rezka] ✅ Exact year match found');
                         } else if (yearMatches.length > 1) {
-                            // Несколько результатов с одним годом - проверяем точное совпадение названия
                             var normalizedSearchTitle = normalizeTitle(titleRu);
                             
                             var exactTitleMatch = yearMatches.find(function(r) {
@@ -544,7 +552,6 @@
                                 selectedResult = exactTitleMatch;
                                 console.log('[Rezka] ✅ Exact title+year match found');
                             } else {
-                                // Нет точного совпадения - покажем выбор только из результатов с правильным годом
                                 console.log('[Rezka] ⚠️ Multiple year matches, showing selection');
                                 comp.showSelection(yearMatches, mediaType, rezkaUrl);
                                 return;
@@ -572,7 +579,6 @@
                             selectedResult = exactMatches[0];
                             console.log('[Rezka] ✅ Exact title match found (no year)');
                         } else if (exactMatches.length > 1) {
-                            // Несколько точных совпадений названия - берем самый популярный или первый
                             selectedResult = exactMatches.sort(function(a, b) {
                                 return (b.popularity || 0) - (a.popularity || 0);
                             })[0];
@@ -594,7 +600,6 @@
                         }
                         comp.openCard(selectedResult.id, mt);
                     } else {
-                        // Иначе показываем выбор
                         console.log('[Rezka] ℹ️ Multiple ambiguous results, showing selection');
                         comp.showSelection(allResults, mediaType, rezkaUrl);
                     }
@@ -612,7 +617,7 @@
                     url: url, 
                     timeout: 10000,
                     success: function(data) {
-                        if (data.results) {
+                        if (data.results && data.results.length > 0) {
                             data.results.forEach(function(item) {
                                 if (!seenIds[item.id]) { 
                                     seenIds[item.id] = true; 
@@ -621,8 +626,35 @@
                                     }
                                 }
                             });
+                            checkComplete();
+                        } else if (year && mediaType !== 'multi') {
+                            // Ничего не нашли с фильтром по году — повторяем без него
+                            yearFallbackUsed = true;
+                            console.log('[Rezka] ⚠️ No results with year=' + year + ', retrying without year filter');
+                            var urlNoYear = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
+                            $.ajax({
+                                url: urlNoYear,
+                                timeout: 10000,
+                                success: function(data2) {
+                                    if (data2.results) {
+                                        data2.results.forEach(function(item) {
+                                            if (!seenIds[item.id]) {
+                                                seenIds[item.id] = true;
+                                                if (item.media_type !== 'person') {
+                                                    allResults.push(item);
+                                                }
+                                            }
+                                        });
+                                    }
+                                    checkComplete();
+                                },
+                                error: function() {
+                                    checkComplete();
+                                }
+                            });
+                        } else {
+                            checkComplete();
                         }
-                        checkComplete();
                     },
                     error: function() { 
                         checkComplete(); 
