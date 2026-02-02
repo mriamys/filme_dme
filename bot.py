@@ -493,12 +493,17 @@ async def check_collections_task():
                 # Отправка уведомлений
                 if new_items:
                     for item in reversed(new_items): 
+                        # Формируем строки с проверкой на пустые значения
+                        year_text = f" ({item['year']})" if item.get('year') else ""
+                        info_text = f"ℹ️ {item['info']}\n" if item.get('info') else ""
+                        status_text = f"📊 {item['status']}\n" if item.get('status') else ""
+                        
                         caption = (
                             f"🆕 <b>Новинка в коллекции!</b>\n\n"
-                            f"🎬 <b>{item['title']}</b> ({item['year']})\n"
-                            f"ℹ️ {item['info']}\n"
-                            f"📊 {item['status']}\n\n"
-                            f"<a href='{item['url']}'>Смотреть на HDRezka</a>"
+                            f"🎬 <b>{item['title']}</b>{year_text}\n"
+                            f"{info_text}"
+                            f"{status_text}"
+                            f"\n<a href='{item['url']}'>Смотреть на HDRezka</a>"
                         )
                         try:
                             if item['poster']:
