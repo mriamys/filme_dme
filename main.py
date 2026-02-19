@@ -95,26 +95,35 @@ class DeleteRequest(BaseModel):
 
 # --- ЭНДПОИНТЫ ---
 
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # секунды между попытками
+
+async def fetch_category_with_retry(cat_id: str, sort: str, label: str) -> list:
+    """Загружает список категории с автоповтором при пустом ответе (как в mod.js)."""
+    for attempt in range(1, MAX_RETRIES + 1):
+        items = await asyncio.to_thread(
+            client.get_category_items_paginated, cat_id, MAX_PAGES, sort
+        )
+        if items:
+            print(f"[API] {label}: {len(items)} элементов (sort={sort}, попытка {attempt})")
+            return items
+        if attempt < MAX_RETRIES:
+            print(f"[API] {label}: пустой ответ, повтор {attempt}/{MAX_RETRIES - 1} через {RETRY_DELAY}с...")
+            await asyncio.sleep(RETRY_DELAY)
+    print(f"[API] {label}: список пуст после {MAX_RETRIES} попыток")
+    return []
+
 @app.get("/api/watching")
-def get_watching(sort: str = "added"):
-    # Передаем параметр сортировки
-    items = client.get_category_items_paginated(CAT_WATCHING, MAX_PAGES, sort_by=sort)
-    print(f"[API] 📋 Смотрю: {len(items)} элементов (sort={sort})")
-    return items
+async def get_watching(sort: str = "added"):
+    return await fetch_category_with_retry(CAT_WATCHING, sort, "📋 Смотрю")
 
 @app.get("/api/later")
-def get_later(sort: str = "added"):
-    items = client.get_category_items_paginated(CAT_LATER, MAX_PAGES, sort_by=sort)
-    # Добавил лог для отладки
-    print(f"[API] ⏳ Позже: {len(items)} элементов")
-    return items
+async def get_later(sort: str = "added"):
+    return await fetch_category_with_retry(CAT_LATER, sort, "⏳ Позже")
 
 @app.get("/api/watched")
-def get_watched(sort: str = "added"):
-    items = client.get_category_items_paginated(CAT_WATCHED, MAX_PAGES, sort_by=sort)
-    # Добавил лог для отладки
-    print(f"[API] ✅ Архив: {len(items)} элементов")
-    return items
+async def get_watched(sort: str = "added"):
+    return await fetch_category_with_retry(CAT_WATCHED, sort, "✅ Архив")
 
 @app.get("/api/details")
 def get_details(url: str):

@@ -368,11 +368,25 @@ async def check_updates_task():
                             if "prefs" not in state[item_id]: state[item_id]["prefs"] = {}
                             state[item_id]["prefs"][first_t_id] = True
                             
+                            # Сохраняем имена всех озвучек
+                            if "translator_names" not in state[item_id]: state[item_id]["translator_names"] = {}
+                            for t in translators:
+                                state[item_id]["translator_names"][str(t["id"])] = t["name"]
+                            
                             translators_to_check.append(first_t_id)
                             logger.info(f"✅ Auto-enabled translator {first_t_id} ({translators[0]['name']})")
                         else:
                             pass
                     else:
+                        # Если имена озвучек ещё не закешированы — загружаем один раз
+                        if "translator_names" not in state[item_id]:
+                            logger.info(f"📝 Кешируем имена озвучек для {title}...")
+                            details = await asyncio.to_thread(client.get_series_details, url)
+                            translators = details.get("translators", [])
+                            state[item_id]["translator_names"] = {
+                                str(t["id"]): t["name"] for t in translators
+                            }
+                        
                         for t_id, enabled in prefs.items():
                             if enabled:
                                 translators_to_check.append(t_id)
@@ -411,10 +425,12 @@ async def check_updates_task():
                         current_progress = state[item_id]["progress"].get(t_id)
                         
                         if current_progress and current_progress != last_tag:
+                            # Получаем имя озвучки из кеша (или показываем ID как запасной вариант)
+                            t_name = state[item_id].get("translator_names", {}).get(t_id, f"ID: {t_id}")
                             msg = (
                                 f"🔥 <b>Новая серия!</b>\n"
                                 f"🎬 <b>{title}</b>\n"
-                                f"🎙 Озвучка ID: {t_id}\n"
+                                f"🎙 Озвучка: {t_name}\n"
                                 f"Сезон {max_s}, Серия {max_e}\n"
                                 f"<a href='{url}'>Смотреть</a>"
                             )

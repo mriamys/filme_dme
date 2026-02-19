@@ -111,30 +111,42 @@ function renderSortedGrid() {
     });
 }
 
-// Загрузка сетки
+// Загрузка сетки с retry (как в mod.js)
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
     
-    try {
-        const res = await fetch(`/api/${cat}?sort=${currentSort}`);
-        const data = await res.json();
-        
-        if (!data || data.length === 0) {
-            allLoadedItems = [];
-            renderSortedGrid();
-            return;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000;
+    
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const res = await fetch(`/api/${cat}?sort=${currentSort}`);
+            const data = await res.json();
+            
+            if (data && data.length > 0) {
+                allLoadedItems = data;
+                renderSortedGrid();
+                return;
+            }
+            
+            // Пустой ответ — повторяем
+            if (attempt < MAX_RETRIES) {
+                grid.innerHTML = `<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка... (попытка ${attempt + 1})</div>`;
+                await new Promise(r => setTimeout(r, RETRY_DELAY));
+            } else {
+                allLoadedItems = [];
+                renderSortedGrid();
+            }
+        } catch (e) {
+            console.error(`loadGrid attempt ${attempt} error:`, e);
+            if (attempt < MAX_RETRIES) {
+                grid.innerHTML = `<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Ошибка... повторяю (${attempt + 1}/${MAX_RETRIES})</div>`;
+                await new Promise(r => setTimeout(r, RETRY_DELAY));
+            } else {
+                grid.innerHTML = '<div style="grid-column:span 2; text-align:center;">Ошибка соединения</div>';
+            }
         }
-        
-        allLoadedItems = data;
-        renderSortedGrid();
-        
-        // Обновляем общие счетчики
-        updateLibraryState(); 
-
-    } catch (e) {
-        console.error(e);
-        grid.innerHTML = '<div style="grid-column:span 2; text-align:center;">Ошибка соединения</div>';
     }
 }
 
