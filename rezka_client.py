@@ -91,6 +91,22 @@ class RezkaClient:
                     date_text = td_date.get_text(strip=True)
                 # ---------------------------
 
+                # --- Парсинг названий серий (td-2) ---
+                episode_title_ru = ""
+                episode_title_en = ""
+                td_2 = tr.find(class_="td-2")
+                if td_2:
+                    # Ищем <b> для русского названия
+                    b_tag = td_2.find("b")
+                    if b_tag:
+                        episode_title_ru = b_tag.get_text(strip=True)
+                    
+                    # Ищем <span> для английского названия
+                    span_tag = td_2.find("span")
+                    if span_tag:
+                        episode_title_en = span_tag.get_text(strip=True)
+                # ---------------------------
+
                 s_id = "1"
                 e_id = "1"
                 match = re.search(r"(\d+)\s*сезон\s*(\d+)\s*серия", text, re.IGNORECASE)
@@ -137,7 +153,9 @@ class RezkaClient:
                             "episode": e_id,
                             "global_id": global_id,
                             "watched": is_watched,
-                            "date": date_text
+                            "date": date_text,
+                            "episode_title_ru": episode_title_ru,
+                            "episode_title_en": episode_title_en
                         }
                     )
         return seasons
