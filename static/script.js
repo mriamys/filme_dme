@@ -247,10 +247,24 @@ async function openDetails(url, title, poster) {
                     // --- ДАТА СЕРИИ ---
                     const dateHtml = ep.date ? `<div class="ep-date">${ep.date}</div>` : '';
                     
+                    // --- НАЗВАНИЯ СЕРИИ ---
+                    let episodeTitlesHtml = '';
+                    if (ep.episode_title_ru || ep.episode_title_en) {
+                        episodeTitlesHtml = '<div class="ep-titles">';
+                        if (ep.episode_title_ru) {
+                            episodeTitlesHtml += `<div class="ep-title-ru">${ep.episode_title_ru}</div>`;
+                        }
+                        if (ep.episode_title_en) {
+                            episodeTitlesHtml += `<div class="ep-title-en">${ep.episode_title_en}</div>`;
+                        }
+                        episodeTitlesHtml += '</div>';
+                    }
+                    
                     row.innerHTML = `
                         <div class="ep-info">
                             <span>${ep.title}</span>
                             ${dateHtml}
+                            ${episodeTitlesHtml}
                         </div>
                         <div class="check ${ep.watched ? 'active' : ''}" onclick="toggle('${ep.global_id}', this)"></div>
                     `;
