@@ -251,12 +251,16 @@ async function openDetails(url, title, poster) {
                     let episodeTitlesHtml = '';
                     if (ep.episode_title_ru || ep.episode_title_en) {
                         episodeTitlesHtml = '<div class="ep-titles">';
+                        
+                        // Якщо є російська назва - показуємо тільки її
                         if (ep.episode_title_ru) {
                             episodeTitlesHtml += `<div class="ep-title-ru">${ep.episode_title_ru}</div>`;
                         }
-                        if (ep.episode_title_en) {
+                        // Англійську показуємо ТІЛЬКИ якщо немає російської
+                        else if (ep.episode_title_en) {
                             episodeTitlesHtml += `<div class="ep-title-en">${ep.episode_title_en}</div>`;
                         }
+                        
                         episodeTitlesHtml += '</div>';
                     }
                     

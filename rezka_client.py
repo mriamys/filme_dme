@@ -78,7 +78,9 @@ class RezkaClient:
         seasons: Dict[str, List[Dict[str, Any]]] = {}
         tables = soup.find_all("table", class_="b-post__schedule_table")
         for table in tables:
-            for tr in table.find_all("tr"):
+            # Знаходимо ВСІ <tr>, включаючи приховані (з класом hide, collapsed і т.д.)
+            all_rows = table.find_all("tr")
+            for tr in all_rows:
                 td_1 = tr.find(class_="td-1")
                 if not td_1:
                     continue
@@ -210,7 +212,9 @@ class RezkaClient:
                         "episode": e_id,
                         "global_id": global_id,
                         "watched": is_watched,
-                        "date": "" 
+                        "date": "",
+                        "episode_title_ru": "",
+                        "episode_title_en": ""
                     }
                 except Exception:
                     continue
@@ -372,6 +376,11 @@ class RezkaClient:
                                     p_ep["global_id"] = t_ep["global_id"]
                                 if t_ep.get("date"):
                                     p_ep["date"] = t_ep["date"]
+                                # Додаємо назви серій
+                                if t_ep.get("episode_title_ru"):
+                                    p_ep["episode_title_ru"] = t_ep["episode_title_ru"]
+                                if t_ep.get("episode_title_en"):
+                                    p_ep["episode_title_en"] = t_ep["episode_title_en"]
                                 break
                         if not found:
                             final_seasons_dict[s_id].append(t_ep)
