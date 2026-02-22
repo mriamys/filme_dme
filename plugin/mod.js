@@ -427,6 +427,8 @@
 
         // --- УЛУЧШЕННЫЙ ПОИСК С УМНЫМ ВЫБОРОМ ---
         comp.search = function (titleRu, titleEn, year, mediaType, rezkaUrl) {
+            console.log('[Rezka Debug] comp.search INPUTS:', { titleRu: titleRu, titleEn: titleEn, year: year, mediaType: mediaType, rezkaUrl: rezkaUrl });
+
             // Проверяем сохраненный выбор
             var savedChoice = rezkaUrl ? getChoice(rezkaUrl) : null;
 
@@ -466,6 +468,7 @@
 
         // --- ОСНОВНАЯ ЛОГИКА ПОИСКА ---
         comp.performSearch = function (titleRu, titleEn, year, mediaType, rezkaUrl) {
+            console.log('[Rezka Debug] comp.performSearch INPUTS:', { titleRu: titleRu, titleEn: titleEn, year: year, mediaType: mediaType, rezkaUrl: rezkaUrl, argsLength: arguments.length });
 
             Lampa.Loading.start(function () { });
             var allResults = [];
