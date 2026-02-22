@@ -474,9 +474,35 @@
 
             // Если поиск вызван вручную (из меню), только 1 параметр
             if (arguments.length === 1 && typeof titleRu === 'string') {
-                queries.push(titleRu);
+                var mTitle = titleRu;
+                var mEn = '';
+                var mYear = '';
+
+                // Разбираем строку "Зверополис 2 / Zootopia 2 (2025)"
+                var yearMatch = mTitle.match(/\((\d{4})\)/);
+                if (yearMatch) {
+                    mYear = yearMatch[1];
+                    mTitle = mTitle.replace(/\(\d{4}\)/, '').trim();
+                }
+
+                var parts = mTitle.split(' / ');
+                if (parts.length > 1) {
+                    mTitle = parts[0].trim();
+                    mEn = parts[1].trim();
+                }
+
+                if (mEn) {
+                    queries.push(mEn);
+                    var ruNumbersMenu = mTitle.match(/\d+/g);
+                    if (ruNumbersMenu && !/\d/.test(mEn)) {
+                        queries.push(mEn + ' ' + ruNumbersMenu.join(' '));
+                    }
+                }
+                queries.push(titleRu); // исходная строка целиком
+                if (mTitle !== titleRu) queries.push(mTitle);
+
                 mediaType = 'multi';
-                year = '';
+                year = mYear;
                 rezkaUrl = null;
             } else {
                 // Обычный поиск из карточки папки
