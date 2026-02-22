@@ -415,7 +415,8 @@
             card.on('hover:enter', function (e) {
                 if (e) e.preventDefault();
                 if (isModalOpen) return;
-                comp.search(titleRuClean, titleEn, year, mediaType, item.url);
+                // ВАЖНО: передаем полное titleRu, а не обрезанное titleRuClean, чтобы цифры (сиквелы) не терялись
+                comp.search(titleRu, titleEn, year, mediaType, item.url);
             });
 
             card.on('hover:long', function () {
@@ -1178,6 +1179,8 @@
                     // 1. Ищем фильм на бэкенде
                     var originalTitle = movie.original_title || movie.original_name || '';
                     var searchUrl = MY_API_URL + '/api/search?q=' + encodeURIComponent(title) + (originalTitle ? '&original=' + encodeURIComponent(originalTitle) : '');
+
+                    console.log('[Rezka Debug] Poster View Extracted:', { title: title, originalTitle: originalTitle, year: year, searchUrl: searchUrl });
 
                     // Обновляет состояние кнопки по rezkaId
                     function updateBtnState(rezkaId) {
