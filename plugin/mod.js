@@ -1,12 +1,10 @@
-﻿(function () {
+﻿(function() {
     'use strict';
 
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] ===== MOD.JS LOADED v2026-02-22-B =====');
-    console.log('[Rezka] API_URL:', MY_API_URL);
-    console.log('[Rezka] TMDB_KEY set:', TMDB_API_KEY ? 'YES (' + TMDB_API_KEY.substring(0, 4) + '...)' : '!!! EMPTY !!!');
+    console.log('[Rezka] Plugin loading (Folders Edition + No Freeze + Styles)...');
 
     // --- СТИЛИ ДЛЯ КНОПКИ (ЧТОБЫ НЕ СЛИВАЛАСЬ) ---
     var style = document.createElement('style');
@@ -39,28 +37,28 @@
 
     // --- ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ ДЛЯ ЗАПОМИНАНИЯ ВЫБОРА ---
     var STORAGE_KEY = 'rezka_movie_choices';
-
+    
     function getStoredChoices() {
         try {
             var data = localStorage.getItem(STORAGE_KEY);
             return data ? JSON.parse(data) : {};
-        } catch (e) {
+        } catch(e) {
             console.error('[Rezka] Storage read error:', e);
             return {};
         }
     }
-
+    
     function saveChoice(rezkaUrl, tmdbId, mediaType) {
         try {
             var choices = getStoredChoices();
             choices[rezkaUrl] = { tmdb_id: tmdbId, media_type: mediaType, timestamp: Date.now() };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(choices));
             console.log('[Rezka] ✅ Saved choice:', rezkaUrl, '→', tmdbId);
-        } catch (e) {
+        } catch(e) {
             console.error('[Rezka] Storage write error:', e);
         }
     }
-
+    
     function deleteChoice(rezkaUrl) {
         try {
             var choices = getStoredChoices();
@@ -69,11 +67,11 @@
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(choices));
                 console.log('[Rezka] 🗑️ Deleted invalid choice:', rezkaUrl);
             }
-        } catch (e) {
+        } catch(e) {
             console.error('[Rezka] Error deleting choice:', e);
         }
     }
-
+    
     function getChoice(rezkaUrl) {
         var choices = getStoredChoices();
         return choices[rezkaUrl] || null;
@@ -93,15 +91,15 @@
             $.ajax({ url: MY_API_URL + '/api/watching?sort=added', dataType: 'json' }),
             $.ajax({ url: MY_API_URL + '/api/later?sort=added', dataType: 'json' }),
             $.ajax({ url: MY_API_URL + '/api/watched?sort=added', dataType: 'json' })
-        ]).then(function (results) {
-            if (results[0].status === 'fulfilled' && results[0].value)
-                libraryState.watching = new Set(results[0].value.map(function (i) { return String(i.id); }));
-
-            if (results[1].status === 'fulfilled' && results[1].value)
-                libraryState.later = new Set(results[1].value.map(function (i) { return String(i.id); }));
-
-            if (results[2].status === 'fulfilled' && results[2].value)
-                libraryState.watched = new Set(results[2].value.map(function (i) { return String(i.id); }));
+        ]).then(function(results) {
+            if (results[0].status === 'fulfilled' && results[0].value) 
+                libraryState.watching = new Set(results[0].value.map(function(i){ return String(i.id); }));
+            
+            if (results[1].status === 'fulfilled' && results[1].value) 
+                libraryState.later = new Set(results[1].value.map(function(i){ return String(i.id); }));
+            
+            if (results[2].status === 'fulfilled' && results[2].value) 
+                libraryState.watched = new Set(results[2].value.map(function(i){ return String(i.id); }));
 
             libraryState.isLoaded = true;
             console.log('[Rezka] Library state updated');
@@ -113,8 +111,8 @@
         comp.html = $('<div class="category-items"></div>');
         var scroll_wrapper = null;
         var last_item = null;
-        var all_items = [];
-        var current_sort = 'added';
+        var all_items = []; 
+        var current_sort = 'added'; 
         var isModalOpen = false;
         var controllerName = 'content';
 
@@ -124,12 +122,12 @@
             'watched': '/api/watched'
         };
 
-        comp.create = function () {
+        comp.create = function() {
             comp.loadData();
             return comp.html;
         };
-
-        comp.loadData = function (retryCount) {
+        
+        comp.loadData = function(retryCount) {
             retryCount = retryCount || 0;
             var MAX_RETRIES = 3;
             var RETRY_DELAY = 2000;
@@ -145,27 +143,27 @@
                 method: 'GET',
                 dataType: 'json',
                 timeout: 15000,
-                success: function (items) {
+                success: function(items) {
                     loader.remove();
                     if (items && items.length > 0) {
                         all_items = items;
                         comp.renderList();
                     } else if (retryCount < MAX_RETRIES) {
                         loader.text('Загрузка... попытка ' + (retryCount + 2));
-                        setTimeout(function () {
+                        setTimeout(function() {
                             comp.loadData(retryCount + 1);
                         }, RETRY_DELAY);
                     } else {
                         comp.html.append('<div class="broadcast__text">Список пуст</div>');
-                        comp.renderHeaderOnly();
+                        comp.renderHeaderOnly(); 
                     }
                 },
-                error: function (err) {
+                error: function(err) {
                     console.error('Error loading rezka:', err);
                     loader.remove();
                     if (retryCount < MAX_RETRIES) {
                         comp.html.append('<div class="broadcast__text">Ошибка... повторяю</div>');
-                        setTimeout(function () {
+                        setTimeout(function() {
                             comp.loadData(retryCount + 1);
                         }, RETRY_DELAY);
                     } else {
@@ -175,14 +173,14 @@
             });
         };
 
-        comp.renderHeaderOnly = function () {
-            var header = comp.buildHeader();
-            comp.html.prepend(header);
-            comp.start();
+        comp.renderHeaderOnly = function() {
+             var header = comp.buildHeader();
+             comp.html.prepend(header);
+             comp.start();
         }
 
         // --- ОТРИСОВКА ИНТЕРФЕЙСА ---
-        comp.renderList = function () {
+        comp.renderList = function() {
             comp.html.empty();
 
             var style = $('<style>' +
@@ -215,11 +213,11 @@
             grid.css({
                 'display': 'grid',
                 'grid-template-columns': 'repeat(auto-fill, minmax(140px, 1fr))',
-                'gap': '15px',
+                'gap': '15px', 
                 'padding': '15px 20px 100px 20px'
             });
 
-            all_items.forEach(function (item) {
+            all_items.forEach(function(item) {
                 grid.append(comp.card(item));
             });
 
@@ -228,21 +226,21 @@
 
             comp.start();
 
-            setTimeout(function () {
+            setTimeout(function() {
                 var firstMovie = grid.find('.selector').first();
                 var sortBtn = comp.html.find('.rezka-sort-btn');
-
+                
                 if (firstMovie.length) {
                     last_item = firstMovie;
                 } else if (sortBtn.length) {
                     last_item = sortBtn;
                 }
-
+                
                 Lampa.Controller.toggle(controllerName);
             }, 200);
         };
-
-        comp.buildHeader = function () {
+        
+        comp.buildHeader = function() {
             var header = $('<div class="rezka-header"></div>');
             header.css({
                 'padding': '15px 20px 5px 20px',
@@ -267,16 +265,16 @@
                 'border': '2px solid rgba(255,255,255,0.1)'
             });
 
-            sortBtn.on('hover:enter', function () {
+            sortBtn.on('hover:enter', function() {
                 comp.showSortMenu();
             });
-
-            sortBtn.on('hover:focus', function () {
+            
+            sortBtn.on('hover:focus', function() {
                 last_item = sortBtn;
                 $(this).addClass('focus');
             });
 
-            sortBtn.on('hover:blur', function () {
+            sortBtn.on('hover:blur', function() {
                 $(this).removeClass('focus');
             });
 
@@ -285,21 +283,21 @@
         }
 
         // --- МЕНЮ СОРТИРОВКИ ---
-        comp.showSortMenu = function () {
+        comp.showSortMenu = function() {
             var items = [
                 { title: 'По дате добавления', value: 'added', selected: current_sort === 'added' },
                 { title: 'По году выпуска', value: 'year', selected: current_sort === 'year' },
                 { title: 'Популярные', value: 'popular', selected: current_sort === 'popular' }
             ];
 
-            items.forEach(function (i) {
-                if (i.selected) i.title = '✅ ' + i.title;
+            items.forEach(function(i) {
+                if(i.selected) i.title = '✅ ' + i.title;
             });
 
             Lampa.Select.show({
                 title: 'Сортировка',
                 items: items,
-                onSelect: function (a) {
+                onSelect: function(a) {
                     if (current_sort !== a.value) {
                         current_sort = a.value;
                         isModalOpen = false;
@@ -309,7 +307,7 @@
                         Lampa.Controller.toggle(controllerName);
                     }
                 },
-                onBack: function () {
+                onBack: function() {
                     isModalOpen = false;
                     Lampa.Controller.toggle(controllerName);
                 }
@@ -317,7 +315,7 @@
         };
 
         // --- СОЗДАНИЕ КАРТОЧКИ ---
-        comp.card = function (item) {
+        comp.card = function(item) {
             var rawTitle = item.title || '';
             var yearMatch = rawTitle.match(/\((\d{4})\)/);
             var year = yearMatch ? yearMatch[1] : (item.year || '');
@@ -391,7 +389,7 @@
 
             card.data('item', item);
 
-            card.on('hover:focus', function () {
+            card.on('hover:focus', function() {
                 last_item = $(this);
                 $(this).addClass('focus');
 
@@ -399,7 +397,7 @@
                     var cardTop = $(this).position().top;
                     var containerHeight = scroll_wrapper.height();
                     var scrollTop = scroll_wrapper.scrollTop();
-                    var headerHeight = 60;
+                    var headerHeight = 60; 
 
                     if (cardTop > containerHeight - 180) {
                         scroll_wrapper.stop().animate({ scrollTop: scrollTop + 250 }, 200);
@@ -410,18 +408,17 @@
                 }
             });
 
-            card.on('hover:blur', function () {
+            card.on('hover:blur', function() {
                 $(this).removeClass('focus');
             });
 
-            card.on('hover:enter', function (e) {
-                if (e) e.preventDefault();
-                if (isModalOpen) return;
-                // ВАЖНО: передаем полное titleRu, а не обрезанное titleRuClean, чтобы цифры (сиквелы) не терялись
-                comp.search(titleRu, titleEn, year, mediaType, item.url);
+            card.on('hover:enter', function(e) {
+                if(e) e.preventDefault();
+                if(isModalOpen) return;
+                comp.search(titleRuClean, titleEn, year, mediaType, item.url);
             });
 
-            card.on('hover:long', function () {
+            card.on('hover:long', function() {
                 comp.menu(item);
             });
 
@@ -429,21 +426,19 @@
         };
 
         // --- УЛУЧШЕННЫЙ ПОИСК С УМНЫМ ВЫБОРОМ ---
-        comp.search = function (titleRu, titleEn, year, mediaType, rezkaUrl) {
-            console.log('[Rezka Debug] comp.search INPUTS:', { titleRu: titleRu, titleEn: titleEn, year: year, mediaType: mediaType, rezkaUrl: rezkaUrl });
-
+        comp.search = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
             // Проверяем сохраненный выбор
             var savedChoice = rezkaUrl ? getChoice(rezkaUrl) : null;
-
+            
             if (savedChoice) {
                 console.log('[Rezka] 🎯 Found saved choice:', savedChoice);
-
+                
                 // Проверяем, существует ли эта карточка в TMDB
                 $.ajax({
-                    url: 'https://api.themoviedb.org/3/' + savedChoice.media_type + '/' + savedChoice.tmdb_id +
-                        '?api_key=' + TMDB_API_KEY + '&language=ru-RU',
+                    url: 'https://api.themoviedb.org/3/' + savedChoice.media_type + '/' + savedChoice.tmdb_id + 
+                         '?api_key=' + TMDB_API_KEY + '&language=ru-RU',
                     timeout: 5000,
-                    success: function (data) {
+                    success: function(data) {
                         if (data && data.id) {
                             // Карточка существует - открываем
                             console.log('[Rezka] ✅ Saved choice is valid, opening card');
@@ -455,7 +450,7 @@
                             comp.performSearch(titleRu, titleEn, year, mediaType, rezkaUrl);
                         }
                     },
-                    error: function () {
+                    error: function() {
                         // Ошибка при проверке - удаляем выбор и ищем заново
                         console.log('[Rezka] ❌ Error checking saved choice, searching again');
                         deleteChoice(rezkaUrl);
@@ -464,71 +459,36 @@
                 });
                 return;
             }
-
+            
             // Нет сохранённого выбора - ищем обычным образом
             comp.performSearch(titleRu, titleEn, year, mediaType, rezkaUrl);
         };
 
         // --- ОСНОВНАЯ ЛОГИКА ПОИСКА ---
-        comp.performSearch = function (titleRu, titleEn, year, mediaType, rezkaUrl) {
-            console.log('[Rezka Debug] comp.performSearch INPUTS:', { titleRu: titleRu, titleEn: titleEn, year: year, mediaType: mediaType, rezkaUrl: rezkaUrl, argsLength: arguments.length });
-
-            Lampa.Loading.start(function () { });
+        comp.performSearch = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
+            
+            Lampa.Loading.start(function() {});
             var allResults = [];
             var seenIds = {};
             var queries = [];
-
+            
             // Если поиск вызван вручную (из меню), только 1 параметр
             if (arguments.length === 1 && typeof titleRu === 'string') {
-                var mTitle = titleRu;
-                var mEn = '';
-                var mYear = '';
-
-                // Разбираем строку "Зверополис 2 / Zootopia 2 (2025)"
-                var yearMatch = mTitle.match(/\((\d{4})\)/);
-                if (yearMatch) {
-                    mYear = yearMatch[1];
-                    mTitle = mTitle.replace(/\(\d{4}\)/, '').trim();
-                }
-
-                var parts = mTitle.split(' / ');
-                if (parts.length > 1) {
-                    mTitle = parts[0].trim();
-                    mEn = parts[1].trim();
-                }
-
-                if (mEn) {
-                    queries.push(mEn);
-                    var ruNumbersMenu = mTitle.match(/\d+/g);
-                    if (ruNumbersMenu && !/\d/.test(mEn)) {
-                        queries.push(mEn + ' ' + ruNumbersMenu.join(' '));
-                    }
-                }
-                queries.push(titleRu); // исходная строка целиком
-                if (mTitle !== titleRu) queries.push(mTitle);
-
-                mediaType = 'multi';
-                year = mYear;
+                queries.push(titleRu);
+                mediaType = 'multi'; 
+                year = '';
                 rezkaUrl = null;
             } else {
                 // Обычный поиск из карточки папки
-                if (titleEn) {
-                    queries.push(titleEn);
-                    // Иногда titleEn может содержать только английские буквы без цифр (очистка регуляркой),
-                    // добавим гибридный запрос, если есть английское название и цифры в русском
-                    var ruNumbers = titleRu.match(/\d+/g);
-                    if (ruNumbers && !/\d/.test(titleEn)) {
-                        queries.push(titleEn + ' ' + ruNumbers.join(' '));
-                    }
-                }
+                if (titleEn) queries.push(titleEn);
                 if (titleRu) queries.push(titleRu);
             }
 
             var completed = 0;
-            if (queries.length === 0) {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('Ошибка');
-                return;
+            if (queries.length === 0) { 
+                Lampa.Loading.stop(); 
+                Lampa.Noty.show('Ошибка'); 
+                return; 
             }
 
             // Функция нормализации названия для сравнения
@@ -546,59 +506,48 @@
                 completed++;
                 if (completed === queries.length) {
                     Lampa.Loading.stop();
-
-                    if (allResults.length === 0) {
-                        Lampa.Noty.show('Не найдено');
+                    
+                    if (allResults.length === 0) { 
+                        Lampa.Noty.show('Не найдено'); 
+                        return; 
+                    }
+                    
+                    console.log('[Rezka] 🔍 Search results:', allResults.length, yearFallbackUsed ? '(year fallback used)' : '');
+                    
+                    // Если год из rezka не совпал и мы упали в fallback — год ненадёжен,
+                    // автоselect по году/названию опасен, сразу показываем выбор
+                    if (yearFallbackUsed) {
+                        console.log('[Rezka] ⚠️ Year fallback was used, showing selection');
+                        comp.showSelection(allResults, mediaType, rezkaUrl);
                         return;
                     }
 
-                    console.log('[Rezka] 🔍 Search results:', allResults.length, yearFallbackUsed ? '(year fallback used)' : '');
-
-                    // Если мы упали в fallback для одного из запросов (например, русское название без года не нашлось, 
-                    // а английское с годом нашлось), мы НЕ должны сразу показывать выбор, 
-                    // если у нас ВСЕ ЖЕ есть результаты с нужным годом.
-                    var hasExactYearMatch = false;
-                    if (year && mediaType !== 'multi') {
-                        hasExactYearMatch = allResults.some(function (r) {
-                            var resultYear = (r.release_date || r.first_air_date || '').substring(0, 4);
-                            return resultYear === year;
-                        });
-                    }
-
-                    // Показываем выбор, если fallback использовался или есть несколько результатов, 
-                    // и мы НЕ нашли 100% идеального автосовпадения (оно проверится ниже).
-                    // Мы убрали жесткий блок if (yearFallbackUsed && !hasExactYearMatch) с return,
-                    // чтобы дать алгоритму ниже шанс найти точное совпадение по названию, 
-                    // либо штатно показать comp.showSelection(allResults...) в конце функции.
-
                     // УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА
                     var selectedResult = null;
-
+                    
                     // 1. Если есть год - пытаемся найти точное совпадение по году
                     if (year && mediaType !== 'multi') {
-                        var yearMatches = allResults.filter(function (r) {
+                        var yearMatches = allResults.filter(function(r) {
                             var resultYear = (r.release_date || r.first_air_date || '').substring(0, 4);
                             return resultYear === year;
                         });
-
+                        
                         console.log('[Rezka] 📅 Year matches (' + year + '):', yearMatches.length);
-
+                        
                         if (yearMatches.length === 1) {
                             selectedResult = yearMatches[0];
                             console.log('[Rezka] ✅ Exact year match found');
                         } else if (yearMatches.length > 1) {
                             var normalizedSearchTitle = normalizeTitle(titleRu);
-                            var normalizedSearchTitleEn = normalizeTitle(titleEn);
-
-                            var exactTitleMatch = yearMatches.find(function (r) {
+                            
+                            var exactTitleMatch = yearMatches.find(function(r) {
                                 var resultTitle = normalizeTitle(r.title || r.name || '');
                                 var resultOriginalTitle = normalizeTitle(r.original_title || r.original_name || '');
-
-                                return resultTitle === normalizedSearchTitle ||
-                                    resultOriginalTitle === normalizedSearchTitle ||
-                                    (normalizedSearchTitleEn && (resultTitle === normalizedSearchTitleEn || resultOriginalTitle === normalizedSearchTitleEn));
+                                
+                                return resultTitle === normalizedSearchTitle || 
+                                       resultOriginalTitle === normalizedSearchTitle;
                             });
-
+                            
                             if (exactTitleMatch) {
                                 selectedResult = exactTitleMatch;
                                 console.log('[Rezka] ✅ Exact title+year match found');
@@ -609,38 +558,40 @@
                             }
                         }
                     }
-
+                    
                     // 2. Если год не помог или его нет - проверяем точное совпадение названия
                     if (!selectedResult) {
                         var normalizedSearchTitle = normalizeTitle(titleRu);
                         var normalizedSearchTitleEn = normalizeTitle(titleEn);
-
-                        var exactMatches = allResults.filter(function (r) {
+                        
+                        var exactMatches = allResults.filter(function(r) {
                             var resultTitle = normalizeTitle(r.title || r.name || '');
                             var resultOriginalTitle = normalizeTitle(r.original_title || r.original_name || '');
-
-                            return resultTitle === normalizedSearchTitle ||
-                                resultOriginalTitle === normalizedSearchTitle ||
-                                (normalizedSearchTitleEn && (resultTitle === normalizedSearchTitleEn || resultOriginalTitle === normalizedSearchTitleEn));
+                            
+                            return resultTitle === normalizedSearchTitle || 
+                                   resultOriginalTitle === normalizedSearchTitle ||
+                                   (normalizedSearchTitleEn && (resultTitle === normalizedSearchTitleEn || resultOriginalTitle === normalizedSearchTitleEn));
                         });
-
+                        
                         console.log('[Rezka] 📝 Exact title matches:', exactMatches.length);
-
+                        
                         if (exactMatches.length === 1) {
                             selectedResult = exactMatches[0];
                             console.log('[Rezka] ✅ Exact title match found (no year)');
                         } else if (exactMatches.length > 1) {
-                            selectedResult = null;
-                            console.log('[Rezka] ⚠️ Multiple exact matches, but no year match. Let user decide.');
+                            selectedResult = exactMatches.sort(function(a, b) {
+                                return (b.popularity || 0) - (a.popularity || 0);
+                            })[0];
+                            console.log('[Rezka] ✅ Multiple exact matches, selected most popular');
                         }
                     }
-
+                    
                     // 3. Если только один результат вообще - берем его
                     if (!selectedResult && allResults.length === 1) {
                         selectedResult = allResults[0];
                         console.log('[Rezka] ✅ Only one result, auto-selecting');
                     }
-
+                    
                     // 4. Если нашли подходящий результат - открываем
                     if (selectedResult) {
                         var mt = mediaType === 'multi' ? selectedResult.media_type : mediaType;
@@ -655,28 +606,23 @@
                 }
             }
 
-            console.log('[Rezka Debug] === Starting TMDB queries ===', queries, 'year:', year, 'mediaType:', mediaType);
-
             // Выполняем поиск по всем запросам
-            queries.forEach(function (q, idx) {
+            queries.forEach(function(q) {
                 var url = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
                 if (year && mediaType !== 'multi') {
                     url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
                 }
-
-                console.log('[Rezka Debug] Query ' + idx + ': "' + q + '" → ' + url);
-
+                
                 $.ajax({
-                    url: url,
+                    url: url, 
                     timeout: 10000,
-                    success: function (data) {
-                        console.log('[Rezka Debug] Response for "' + q + '":', data.results ? data.results.length + ' results' : 'NO results field', data);
+                    success: function(data) {
                         if (data.results && data.results.length > 0) {
-                            data.results.forEach(function (item) {
-                                if (!seenIds[item.id]) {
-                                    seenIds[item.id] = true;
-                                    if (item.media_type !== 'person') {
-                                        allResults.push(item);
+                            data.results.forEach(function(item) {
+                                if (!seenIds[item.id]) { 
+                                    seenIds[item.id] = true; 
+                                    if(item.media_type !== 'person') {
+                                        allResults.push(item); 
                                     }
                                 }
                             });
@@ -684,15 +630,14 @@
                         } else if (year && mediaType !== 'multi') {
                             // Ничего не нашли с фильтром по году — повторяем без него
                             yearFallbackUsed = true;
-                            console.log('[Rezka Debug] ⚠️ No results with year=' + year + ' for "' + q + '", retrying without year filter');
+                            console.log('[Rezka] ⚠️ No results with year=' + year + ', retrying without year filter');
                             var urlNoYear = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
                             $.ajax({
                                 url: urlNoYear,
                                 timeout: 10000,
-                                success: function (data2) {
-                                    console.log('[Rezka Debug] Fallback response for "' + q + '":', data2.results ? data2.results.length + ' results' : 'NO results field');
+                                success: function(data2) {
                                     if (data2.results) {
-                                        data2.results.forEach(function (item) {
+                                        data2.results.forEach(function(item) {
                                             if (!seenIds[item.id]) {
                                                 seenIds[item.id] = true;
                                                 if (item.media_type !== 'person') {
@@ -703,8 +648,7 @@
                                     }
                                     checkComplete();
                                 },
-                                error: function (xhr, status, err) {
-                                    console.log('[Rezka Debug] ❌ Fallback AJAX ERROR for "' + q + '":', status, err, 'HTTP:', xhr.status);
+                                error: function() {
                                     checkComplete();
                                 }
                             });
@@ -712,77 +656,76 @@
                             checkComplete();
                         }
                     },
-                    error: function (xhr, status, err) {
-                        console.log('[Rezka Debug] ❌ AJAX ERROR for "' + q + '":', status, err, 'HTTP:', xhr.status);
-                        checkComplete();
+                    error: function() { 
+                        checkComplete(); 
                     }
                 });
             });
         };
 
-        comp.showSelection = function (results, mediaType, rezkaUrl) {
-            if (isModalOpen) return;
+        comp.showSelection = function(results, mediaType, rezkaUrl) {
+            if (isModalOpen) return; 
             isModalOpen = true;
-
-            var items = results.map(function (item) {
+            
+            var items = results.map(function(item) {
                 var yr = (item.release_date || item.first_air_date || '').substring(0, 4);
                 var type = item.media_type === 'tv' ? 'TV' : 'Фильм';
                 return {
-                    title: (item.title || item.name) + ' (' + yr + ') ' + (mediaType === 'multi' ? '[' + type + ']' : ''),
+                    title: (item.title || item.name) + ' (' + yr + ') ' + (mediaType === 'multi' ? '['+type+']' : ''),
                     description: (item.overview || '').substring(0, 150),
                     tmdb_id: item.id,
                     media_type: item.media_type || mediaType
                 };
             });
-
+            
             Lampa.Select.show({
-                title: 'Выберите вариант',
+                title: 'Выберите вариант', 
                 items: items,
-                onSelect: function (s) {
-                    isModalOpen = false;
+                onSelect: function(s) { 
+                    isModalOpen = false; 
                     if (rezkaUrl) {
                         saveChoice(rezkaUrl, s.tmdb_id, s.media_type);
                     }
-                    comp.openCard(s.tmdb_id, s.media_type);
+                    comp.openCard(s.tmdb_id, s.media_type); 
                     Lampa.Controller.toggle(controllerName);
                 },
-                onBack: function () {
-                    isModalOpen = false;
-                    Lampa.Controller.toggle(controllerName);
+                onBack: function() { 
+                    isModalOpen = false; 
+                    Lampa.Controller.toggle(controllerName); 
                 }
             });
         };
 
-        comp.openCard = function (tmdbId, mediaType) {
-            Lampa.Activity.push({
-                component: 'full',
-                id: tmdbId,
-                method: mediaType,
-                source: 'tmdb',
-                card: { id: tmdbId, source: 'tmdb' }
+        comp.openCard = function(tmdbId, mediaType) {
+            Lampa.Activity.push({ 
+                component: 'full', 
+                id: tmdbId, 
+                method: mediaType, 
+                source: 'tmdb', 
+                card: { id: tmdbId, source: 'tmdb' } 
             });
         };
 
         // --- МЕНЮ УПРАВЛЕНИЯ ---
-        comp.menu = function (item) {
+        comp.menu = function(item) {
             if (isModalOpen) return; isModalOpen = true;
-
+            
             var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
             var items = [];
-
+            
             items.push({ title: '🔍 Найти в TMDB', value: 'manual_search' });
 
             if (isTv) items.push({ title: '📝 Отметки серий', value: 'episodes' });
             if (category !== 'watching') items.push({ title: '▶ В Смотрю', value: 'move_watching' });
-            if (category !== 'later') items.push({ title: '⏳ В Позже', value: 'move_later' });
-            if (category !== 'watched') items.push({ title: '✅ В Архив', value: 'move_watched' });
+            if (category !== 'later')    items.push({ title: '⏳ В Позже', value: 'move_later'    });
+            if (category !== 'watched') items.push({ title: '✅ В Архив', value: 'move_watched'  });
             items.push({ title: '🗑️ Удалить', value: 'delete' });
 
             Lampa.Select.show({
                 title: 'Управление', items: items,
-                onSelect: function (sel) {
+                onSelect: function(sel) {
                     isModalOpen = false;
-
+                    
                     if (sel.value === 'episodes') {
                         comp.episodes(item);
                     } else if (sel.value === 'manual_search') {
@@ -794,16 +737,16 @@
                         var titleRu = titleNoYear.split('/')[0].trim();
                         var titleEnRaw = (titleNoYear.split('/')[1] || '').trim();
                         var titleEn = /[а-яёА-ЯЁ]/.test(titleEnRaw) ? '' : titleEnRaw;
-
+                        
                         // Убираем подзаголовки (после : и -) для более широкого поиска
                         var titleRuShort = titleRu.split(':')[0].split('-')[0].trim();
                         var titleEnShort = titleEn.split(':')[0].split('-')[0].trim();
-
+                        
                         var isTv = /\/series\/|\/cartoons\//.test(item.url || '');
                         var mediaType = isTv ? 'tv' : 'movie';
-
+                        
                         console.log('[Rezka] Manual search:', titleRuShort, '/', titleEnShort);
-
+                        
                         // Поиск с сохранением выбора
                         comp.manualSearch(titleRuShort, titleEnShort, year, mediaType, item.url);
                         Lampa.Controller.toggle(controllerName);
@@ -811,7 +754,7 @@
                         comp.action(sel.value, item);
                     }
                 },
-                onBack: function () {
+                onBack: function() { 
                     isModalOpen = false;
                     Lampa.Controller.toggle(controllerName);
                 }
@@ -819,20 +762,20 @@
         };
 
         // --- РУЧНОЙ ПОИСК С ЗАПОМИНАНИЕМ ВЫБОРА ---
-        comp.manualSearch = function (titleRu, titleEn, year, mediaType, rezkaUrl) {
-            Lampa.Loading.start(function () { });
+        comp.manualSearch = function(titleRu, titleEn, year, mediaType, rezkaUrl) {
+            Lampa.Loading.start(function() {});
             var allResults = [];
             var seenIds = {};
             var queries = [];
-
+            
             // Добавляем запросы (английский приоритетнее для более широких результатов)
             if (titleEn) queries.push(titleEn);
             if (titleRu) queries.push(titleRu);
-
-            if (queries.length === 0) {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('Ошибка');
-                return;
+            
+            if (queries.length === 0) { 
+                Lampa.Loading.stop(); 
+                Lampa.Noty.show('Ошибка'); 
+                return; 
             }
 
             var completed = 0;
@@ -841,230 +784,230 @@
                 completed++;
                 if (completed === queries.length) {
                     Lampa.Loading.stop();
-
-                    if (allResults.length === 0) {
-                        Lampa.Noty.show('Не найдено');
-                        return;
+                    
+                    if (allResults.length === 0) { 
+                        Lampa.Noty.show('Не найдено'); 
+                        return; 
                     }
-
+                    
                     console.log('[Rezka] Manual search results:', allResults.length);
-
+                    
                     // Всегда показываем выбор для ручного поиска
                     comp.showSelectionWithSave(allResults, mediaType, rezkaUrl);
                 }
             }
 
             // Выполняем поиск БЕЗ фильтра по году для большего выбора
-            queries.forEach(function (q) {
-                var url = 'https://api.themoviedb.org/3/search/' + mediaType +
-                    '?api_key=' + TMDB_API_KEY +
-                    '&language=ru-RU&query=' + encodeURIComponent(q);
+            queries.forEach(function(q) {
+                var url = 'https://api.themoviedb.org/3/search/' + mediaType + 
+                          '?api_key=' + TMDB_API_KEY + 
+                          '&language=ru-RU&query=' + encodeURIComponent(q);
                 // НЕ добавляем year для более широкого поиска
-
+                
                 $.ajax({
-                    url: url,
+                    url: url, 
                     timeout: 10000,
-                    success: function (data) {
+                    success: function(data) {
                         if (data.results) {
-                            data.results.forEach(function (item) {
-                                if (!seenIds[item.id]) {
-                                    seenIds[item.id] = true;
-                                    if (item.media_type !== 'person') {
-                                        allResults.push(item);
+                            data.results.forEach(function(item) {
+                                if (!seenIds[item.id]) { 
+                                    seenIds[item.id] = true; 
+                                    if(item.media_type !== 'person') {
+                                        allResults.push(item); 
                                     }
                                 }
                             });
                         }
                         checkComplete();
                     },
-                    error: function () {
-                        checkComplete();
+                    error: function() { 
+                        checkComplete(); 
                     }
                 });
             });
         };
 
         // --- ПОКАЗ ВЫБОРА С СОХРАНЕНИЕМ ---
-        comp.showSelectionWithSave = function (results, mediaType, rezkaUrl) {
-            if (isModalOpen) return;
+        comp.showSelectionWithSave = function(results, mediaType, rezkaUrl) {
+            if (isModalOpen) return; 
             isModalOpen = true;
-
+            
             // Сортируем по популярности и году
-            var sortedResults = results.sort(function (a, b) {
+            var sortedResults = results.sort(function(a, b) {
                 var yearA = parseInt((a.release_date || a.first_air_date || '0').substring(0, 4)) || 0;
                 var yearB = parseInt((b.release_date || b.first_air_date || '0').substring(0, 4)) || 0;
                 var popA = a.popularity || 0;
                 var popB = b.popularity || 0;
-
+                
                 // Сначала по году (новые), потом по популярности
                 if (yearB !== yearA) return yearB - yearA;
                 return popB - popA;
             });
-
-            var items = sortedResults.map(function (item) {
+            
+            var items = sortedResults.map(function(item) {
                 var yr = (item.release_date || item.first_air_date || '').substring(0, 4);
                 var type = item.media_type === 'tv' ? 'TV' : 'Фильм';
                 return {
-                    title: (item.title || item.name) + ' (' + (yr || '?') + ') ' + (mediaType === 'multi' ? '[' + type + ']' : ''),
+                    title: (item.title || item.name) + ' (' + (yr || '?') + ') ' + (mediaType === 'multi' ? '['+type+']' : ''),
                     description: (item.overview || '').substring(0, 150),
                     tmdb_id: item.id,
                     media_type: item.media_type || mediaType
                 };
             });
-
+            
             Lampa.Select.show({
-                title: 'Выберите вариант',
+                title: 'Выберите вариант', 
                 items: items,
-                onSelect: function (s) {
+                onSelect: function(s) { 
                     isModalOpen = false;
-
+                    
                     // Сохраняем выбор
                     if (rezkaUrl) {
                         saveChoice(rezkaUrl, s.tmdb_id, s.media_type);
                         console.log('[Rezka] ✅ Saved manual choice:', rezkaUrl, '→', s.tmdb_id);
                     }
-
-                    comp.openCard(s.tmdb_id, s.media_type);
+                    
+                    comp.openCard(s.tmdb_id, s.media_type); 
                     Lampa.Controller.toggle(controllerName);
                 },
-                onBack: function () {
-                    isModalOpen = false;
-                    Lampa.Controller.toggle(controllerName);
+                onBack: function() { 
+                    isModalOpen = false; 
+                    Lampa.Controller.toggle(controllerName); 
                 }
             });
         };
 
         // --- СЕРИИ ---
-        comp.episodes = function (item) {
+        comp.episodes = function(item) {
             if (isModalOpen) return; isModalOpen = true;
-            Lampa.Loading.start(function () { });
-
+            Lampa.Loading.start(function() {});
+            
             $.ajax({
                 url: MY_API_URL + '/api/details', data: { url: item.url },
-                success: function (details) {
+                success: function(details) {
                     Lampa.Loading.stop();
-                    if (!details || !details.seasons) {
-                        Lampa.Noty.show('Ошибка');
-                        isModalOpen = false;
+                    if (!details || !details.seasons) { 
+                        Lampa.Noty.show('Ошибка'); 
+                        isModalOpen = false; 
                         Lampa.Controller.toggle(controllerName);
-                        return;
+                        return; 
                     }
-                    var seasons = Object.keys(details.seasons).sort(function (a, b) { return parseInt(a) - parseInt(b); });
-                    var items = seasons.map(function (s) {
+                    var seasons = Object.keys(details.seasons).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+                    var items = seasons.map(function(s) {
                         var eps = details.seasons[s];
-                        var w = eps.filter(function (e) { return e.watched; }).length;
+                        var w = eps.filter(function(e) { return e.watched; }).length;
                         return { title: 'Сезон ' + s + ' (' + w + '/' + eps.length + ')', value: s, episodes: eps };
                     });
                     Lampa.Select.show({
                         title: 'Выберите сезон', items: items,
-                        onSelect: function (sel) { comp.episodeList(item, sel.value, sel.episodes); },
-                        onBack: function () { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
+                        onSelect: function(sel) { comp.episodeList(item, sel.value, sel.episodes); },
+                        onBack: function() { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
                     });
                 },
-                error: function () { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
-        comp.episodeList = function (item, season, episodes) {
+        comp.episodeList = function(item, season, episodes) {
             var items = [{ title: '✅ Отметить весь сезон', value: 'all', season: season }];
-            episodes.sort(function (a, b) { return parseInt(a.episode) - parseInt(b.episode); }).forEach(function (ep) {
-                items.push({
-                    title: (ep.watched ? '✅ ' : '▫️ ') + 'Серия ' + ep.episode,
-                    value: ep.episode,
-                    season: season
+            episodes.sort(function(a, b) { return parseInt(a.episode) - parseInt(b.episode); }).forEach(function(ep) {
+                items.push({ 
+                    title: (ep.watched ? '✅ ' : '▫️ ') + 'Серия ' + ep.episode, 
+                    value: ep.episode, 
+                    season: season 
                 });
             });
             Lampa.Select.show({
                 title: 'Сезон ' + season, items: items,
-                onSelect: function (sel) {
+                onSelect: function(sel) {
                     if (sel.value === 'all') comp.markAll(item, sel.season);
                     else comp.markOne(item, sel.season, sel.value);
                 },
-                onBack: function () { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
+                onBack: function() { isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
-        comp.markOne = function (item, season, episode) {
-            Lampa.Loading.start(function () { });
+        comp.markOne = function(item, season, episode) {
+            Lampa.Loading.start(function() {});
             $.ajax({
                 url: MY_API_URL + '/api/episode/mark', method: 'POST', contentType: 'application/json',
                 data: JSON.stringify({ url: item.url, season: season, episode: episode }),
-                success: function (res) {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show(res.success ? 'Сохранено' : 'Ошибка');
-                    isModalOpen = false;
+                success: function(res) { 
+                    Lampa.Loading.stop(); 
+                    Lampa.Noty.show(res.success ? 'Сохранено' : 'Ошибка'); 
+                    isModalOpen = false; 
                     Lampa.Controller.toggle(controllerName);
                     if (res.success) comp.loadData();
                 },
-                error: function () { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
-        comp.markAll = function (item, season) {
-            Lampa.Loading.start(function () { });
+        comp.markAll = function(item, season) {
+            Lampa.Loading.start(function() {});
             $.ajax({
                 url: MY_API_URL + '/api/episode/mark-range', method: 'POST', contentType: 'application/json',
                 data: JSON.stringify({ url: item.url, season: season, from_episode: 1, to_episode: 999 }),
-                success: function (res) {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show(res.success ? 'Сезон отмечен' : 'Ошибка');
-                    isModalOpen = false;
+                success: function(res) { 
+                    Lampa.Loading.stop(); 
+                    Lampa.Noty.show(res.success ? 'Сезон отмечен' : 'Ошибка'); 
+                    isModalOpen = false; 
                     Lampa.Controller.toggle(controllerName);
-                    if (res.success) comp.loadData();
+                    if (res.success) comp.loadData(); 
                 },
-                error: function () { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
+                error: function() { Lampa.Loading.stop(); Lampa.Noty.show('Ошибка сети'); isModalOpen = false; Lampa.Controller.toggle(controllerName); }
             });
         };
 
-        comp.action = function (action, item) {
+        comp.action = function(action, item) {
             var match = item.url.match(/\/(\d+)/);
             var postId = match ? match[1] : null;
-
+            
             if (!postId) { Lampa.Noty.show('Не найден ID фильма'); return; }
-
-            Lampa.Loading.start(function () { });
-
+            
+            Lampa.Loading.start(function() {});
+            
             var endpoint = action === 'delete' ? '/api/delete' : '/api/move';
-            var data = action === 'delete'
-                ? { post_id: postId, category: category }
+            var data = action === 'delete' 
+                ? { post_id: postId, category: category } 
                 : { post_id: postId, from_category: category, to_category: action.replace('move_', '') };
-
+            
             $.ajax({
                 url: MY_API_URL + endpoint,
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify(data),
-                success: function (res) {
-                    Lampa.Loading.stop();
+                success: function(res) { 
+                    Lampa.Loading.stop(); 
                     Lampa.Noty.show('Выполнено');
                     updateLibraryState(); // Обновляем кэш
                     Lampa.Controller.toggle(controllerName);
-                    setTimeout(function () { comp.loadData(); }, 500);
+                    setTimeout(function() { comp.loadData(); }, 500);
                 },
-                error: function (err) {
-                    Lampa.Loading.stop();
+                error: function(err) { 
+                    Lampa.Loading.stop(); 
                     console.error('[Rezka] Action Error:', err);
-                    Lampa.Noty.show('Ошибка сети: ' + err.status);
-                    Lampa.Controller.toggle(controllerName);
+                    Lampa.Noty.show('Ошибка сети: ' + err.status); 
+                    Lampa.Controller.toggle(controllerName); 
                 }
             });
         };
 
-        comp.reload = function () {
+        comp.reload = function() {
             Lampa.Activity.replace({ component: 'rezka_' + category, page: 1 });
         };
 
         // --- ГЛАВНЫЙ КОНТРОЛЛЕР ---
-        comp.start = function () {
+        comp.start = function() {
             Lampa.Controller.add(controllerName, {
-                toggle: function () {
+                toggle: function() {
                     Lampa.Controller.collectionSet(comp.html);
                     if (!last_item || !$(last_item).parent().length || !$(last_item).is(':visible')) {
                         last_item = comp.html.find('.selector').first();
                     }
                     Lampa.Controller.collectionFocus(last_item, comp.html);
                 },
-                up: function () {
+                up: function() {
                     if (last_item && $(last_item).hasClass('rezka-sort-btn')) {
                         Lampa.Controller.toggle('head');
                         return;
@@ -1100,67 +1043,67 @@
                         }
                     }
                 },
-                down: function () { if (Navigator.canmove('down')) Navigator.move('down'); },
-                left: function () { if (Navigator.canmove('left')) Navigator.move('left'); else Lampa.Controller.toggle('menu'); },
-                right: function () { if (Navigator.canmove('right')) Navigator.move('right'); },
-                back: function () { Lampa.Activity.backward(); }
+                down: function() { if(Navigator.canmove('down')) Navigator.move('down'); },
+                left: function() { if(Navigator.canmove('left')) Navigator.move('left'); else Lampa.Controller.toggle('menu'); },
+                right: function() { if(Navigator.canmove('right')) Navigator.move('right'); },
+                back: function() { Lampa.Activity.backward(); }
             });
 
             Lampa.Controller.toggle(controllerName);
         };
 
-        comp.resume = function () {
+        comp.resume = function() {
             console.log('[Rezka] resume called');
             // Пересоздаём контроллер заново, а не просто toggle
             comp.start();
         };
 
-        comp.pause = function () {
+        comp.pause = function() {
             console.log('[Rezka] Paused');
         };
 
-        comp.destroy = function () {
+        comp.destroy = function() {
             console.log('[Rezka] Destroyed');
             Lampa.Controller.clear();
             comp.html.remove();
         };
 
-        comp.render = function () { return comp.html; };
+        comp.render = function() { return comp.html; };
         return comp;
     }
 
     function init() {
         if (!window.Lampa) return;
-
+        
         function createComponent(name, category) {
-            Lampa.Component.add(name, function () {
+            Lampa.Component.add(name, function() {
                 var c = new RezkaCategory(category);
-                c.activity_resume = function () {
+                c.activity_resume = function() { 
                     c.start();
                 };
                 return c;
             });
         }
-
+        
         createComponent('rezka_watching', 'watching');
         createComponent('rezka_later', 'later');
         createComponent('rezka_watched', 'watched');
 
-        setTimeout(function () {
+        setTimeout(function() {
             $('[data-action^="rezka_"]').remove();
             var menu = $('.menu .menu__list').eq(0);
-
+            
             var icon_watching = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
-            var icon_later = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
-            var icon_watched = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+            var icon_later    = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
+            var icon_watched  = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
 
             [
-                { a: 'rezka_watching', i: icon_watching, t: 'Смотрю' },
-                { a: 'rezka_later', i: icon_later, t: 'Позже' },
-                { a: 'rezka_watched', i: icon_watched, t: 'Архив' }
-            ].forEach(function (item) {
+                {a:'rezka_watching', i: icon_watching, t:'Смотрю'}, 
+                {a:'rezka_later',    i: icon_later,    t:'Позже'}, 
+                {a:'rezka_watched',  i: icon_watched,  t:'Архив'}
+            ].forEach(function(item) {
                 var mi = $('<li class="menu__item selector" data-action="' + item.a + '"><div class="menu__ico">' + item.i + '</div><div class="menu__text">' + item.t + '</div></li>');
-                mi.on('hover:enter', function () { Lampa.Activity.push({ component: item.a, page: 1 }); });
+                mi.on('hover:enter', function() { Lampa.Activity.push({ component: item.a, page: 1 }); });
                 menu.append(mi);
             });
         }, 1000);
@@ -1169,34 +1112,31 @@
         updateLibraryState();
 
         // --- ИНТЕГРАЦИЯ В КАРТОЧКУ LAMPA (ПОСТЕР) ---
-        Lampa.Listener.follow('full', function (e) {
+        Lampa.Listener.follow('full', function(e) {
             if (e.type === 'complite') {
                 updateLibraryState(); // Обновляем, чтобы знать актуальные статусы
 
                 var render = e.object.activity.render();
                 var movie = e.data.movie;
                 var title = movie.title || movie.name;
-                var year = (movie.release_date || movie.first_air_date || '0000').substring(0, 4);
+                var year = (movie.release_date || movie.first_air_date || '0000').substring(0,4);
 
                 var buttons = render.find('.full-start-new__buttons, .full-start__buttons');
-
+                
                 if (buttons.length) {
                     // Создаем кнопку "Папки" (белую, с классом rezka-poster-btn для стилей)
                     var myBtn = $('<div class="full-start__button selector view--category rezka-poster-btn"><svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><span>Папки</span></div>');
-
+                    
                     buttons.append(myBtn);
 
                     // 1. Ищем фильм на бэкенде
-                    var originalTitle = movie.original_title || movie.original_name || '';
-                    var searchUrl = MY_API_URL + '/api/search?q=' + encodeURIComponent(title) + (originalTitle ? '&original=' + encodeURIComponent(originalTitle) : '');
-
-                    console.log('[Rezka Debug] Poster View Extracted:', { title: title, originalTitle: originalTitle, year: year, searchUrl: searchUrl });
-
+                    var searchUrl = MY_API_URL + '/api/search?q=' + encodeURIComponent(title);
+                    
                     // Обновляет состояние кнопки по rezkaId
                     function updateBtnState(rezkaId) {
                         var inLib = libraryState.watching.has(rezkaId) ||
-                            libraryState.later.has(rezkaId) ||
-                            libraryState.watched.has(rezkaId);
+                                    libraryState.later.has(rezkaId) ||
+                                    libraryState.watched.has(rezkaId);
                         if (inLib) {
                             myBtn.find('svg').attr('fill', '#ffffff');
                             myBtn.find('span').text('В папке');
@@ -1218,7 +1158,7 @@
                     $.ajax({
                         url: searchUrl,
                         dataType: 'json',
-                        success: function (results) {
+                        success: function(results) {
                             if (!results || !results.length) {
                                 myBtn.find('span').text('Не найдено');
                                 myBtn.css({ opacity: 0.5 });
@@ -1229,78 +1169,51 @@
 
                             var selectedMatch = null;
                             var normalizedSearchTitle = normalizeTitle(title);
-                            var originalTitle = movie.original_title || movie.original_name || '';
-                            var normalizedOriginalTitle = normalizeTitle(originalTitle);
 
-                            // 0. Если один из результатов УЖЕ добавлен в какую-либо из папок - выбираем его автоматически
-                            var inLibMatches = results.filter(function (r) {
-                                var rid = String(r.id);
-                                return libraryState.watching.has(rid) ||
-                                    libraryState.later.has(rid) ||
-                                    libraryState.watched.has(rid);
+                            // 1. Проверяем точное совпадение названия (1 в 1)
+                            var exactTitleMatches = results.filter(function(r) {
+                                var resultTitle = normalizeTitle(r.title);
+                                return resultTitle === normalizedSearchTitle;
                             });
 
-                            if (inLibMatches.length === 1) {
-                                selectedMatch = inLibMatches[0];
-                                console.log('[Rezka] ✅ Auto-selected: already saved in library folders');
+                            console.log('[Rezka] Exact title matches:', exactTitleMatches.length);
+
+                            if (exactTitleMatches.length === 1) {
+                                // Одно точное совпадение названия - берём его автоматически
+                                selectedMatch = exactTitleMatches[0];
+                                console.log('[Rezka] ✅ Auto-selected: exact title match');
+                            } else if (exactTitleMatches.length > 1) {
+                                // Несколько с одинаковым названием - берём самый свежий (по году)
+                                selectedMatch = exactTitleMatches.sort(function(a, b) {
+                                    var yearA = parseInt(a.year) || 0;
+                                    var yearB = parseInt(b.year) || 0;
+                                    return yearB - yearA; // Сначала новые
+                                })[0];
+                                console.log('[Rezka] ✅ Auto-selected: latest of exact matches, year:', selectedMatch.year);
+                            } else if (results.length === 1) {
+                                // Только один результат вообще - берём его
+                                selectedMatch = results[0];
+                                console.log('[Rezka] ✅ Auto-selected: single result');
+                            }
+
+                            if (selectedMatch) {
+                                // Нашли точное совпадение - сразу сетим ID
+                                myBtn.data('rezka-id', String(selectedMatch.id));
+                                updateBtnState(String(selectedMatch.id));
+                                console.log('[Rezka] Set rezka-id:', selectedMatch.id, selectedMatch.title);
                             } else {
-                                // 1. Проверяем точное совпадение названия (сначала русское, потом оригинальное)
-                                var exactTitleMatches = results.filter(function (r) {
-                                    var resultTitle = normalizeTitle(r.title);
-                                    return resultTitle === normalizedSearchTitle ||
-                                        (normalizedOriginalTitle && resultTitle === normalizedOriginalTitle);
-                                });
-
-                                console.log('[Rezka] Exact title matches:', exactTitleMatches.length);
-
-                                if (exactTitleMatches.length === 1) {
-                                    // Одно точное совпадение названия
-                                    selectedMatch = exactTitleMatches[0];
-                                    console.log('[Rezka] ✅ Auto-selected: exact title match');
-                                } else if (exactTitleMatches.length > 1) {
-                                    // Несколько с одинаковым названием - ищем по году
-                                    var yearMatches = exactTitleMatches.filter(function (r) {
-                                        return (r.year || '').toString() === year;
-                                    });
-
-                                    if (yearMatches.length === 1) {
-                                        selectedMatch = yearMatches[0];
-                                        console.log('[Rezka] ✅ Auto-selected: exact title + year match');
-                                    } else if (yearMatches.length > 1) {
-                                        selectedMatch = yearMatches.sort(function (a, b) {
-                                            return (parseInt(b.year) || 0) - (parseInt(a.year) || 0);
-                                        })[0];
-                                        console.log('[Rezka] ✅ Auto-selected: latest of exact title+year matches');
-                                    } else {
-                                        // Нет совпадений по году среди точных по названию - оставляем выбор за пользователем (бот "не уверен")
-                                        selectedMatch = null;
-                                        console.log('[Rezka] ⚠️ Multiple exact title matches, but no year match. Let user decide.');
-                                    }
-                                } else if (results.length === 1) {
-                                    // Только один результат вообще
-                                    selectedMatch = results[0];
-                                    console.log('[Rezka] ✅ Auto-selected: single result');
-                                }
-
-                                if (selectedMatch) {
-                                    // Нашли подходящий результат - сразу сетим ID
-                                    myBtn.data('rezka-id', String(selectedMatch.id));
-                                    updateBtnState(String(selectedMatch.id));
-                                    console.log('[Rezka] Set rezka-id:', selectedMatch.id, selectedMatch.title);
-                                } else {
-                                    // Неоднозначность или нет точного совпадения - сохраняем весь список для выбора
-                                    myBtn.data('rezka-candidates', results);
-                                    console.log('[Rezka] Multiple ambiguous results or no exact match, showing selection on click');
-                                }
+                                // Неоднозначность - сохраняем список для выбора
+                                myBtn.data('rezka-candidates', results);
+                                console.log('[Rezka] Multiple ambiguous results, showing selection on click');
                             }
                         },
-                        error: function () {
+                        error: function() {
                             myBtn.find('span').text('Ошибка');
                         }
                     });
 
                     function restoreFocus() {
-                        setTimeout(function () {
+                        setTimeout(function() {
                             Lampa.Controller.toggle('full_start');
                         }, 100);
                     }
@@ -1317,7 +1230,7 @@
                         Lampa.Select.show({
                             title: 'Папки: Управление',
                             items: menuItems,
-                            onSelect: function (a) {
+                            onSelect: function(a) {
                                 Lampa.Loading.start();
                                 var actionUrl = (a.value === 'delete') ? '/api/delete' : '/api/add';
                                 var payload = { post_id: rid, category: a.value };
@@ -1327,7 +1240,7 @@
                                     method: 'POST',
                                     contentType: 'application/json',
                                     data: JSON.stringify(payload),
-                                    success: function () {
+                                    success: function() {
                                         Lampa.Loading.stop();
                                         Lampa.Noty.show('Готово');
 
@@ -1345,21 +1258,21 @@
                                         updateBtnState(rid);
                                         restoreFocus();
                                     },
-                                    error: function () {
+                                    error: function() {
                                         Lampa.Loading.stop();
                                         Lampa.Noty.show('Ошибка');
                                         restoreFocus();
                                     }
                                 });
                             },
-                            onBack: function () {
+                            onBack: function() {
                                 restoreFocus();
                             }
                         });
                     }
 
                     // Клик по кнопке
-                    myBtn.on('hover:enter', function () {
+                    myBtn.on('hover:enter', function() {
                         var rid = myBtn.data('rezka-id');
 
                         if (rid) {
@@ -1373,16 +1286,16 @@
                         if (!candidates || !candidates.length) return;
 
                         // Сортируем по году (новые сначала)
-                        var sortedCandidates = candidates.sort(function (a, b) {
+                        var sortedCandidates = candidates.sort(function(a, b) {
                             var yearA = parseInt(a.year) || 0;
                             var yearB = parseInt(b.year) || 0;
                             return yearB - yearA;
                         });
 
-                        var selectItems = sortedCandidates.map(function (r) {
+                        var selectItems = sortedCandidates.map(function(r) {
                             var inLib = libraryState.watching.has(String(r.id)) ||
-                                libraryState.later.has(String(r.id)) ||
-                                libraryState.watched.has(String(r.id));
+                                        libraryState.later.has(String(r.id)) ||
+                                        libraryState.watched.has(String(r.id));
                             return {
                                 title: (inLib ? '📁 ' : '') + r.title + ' (' + (r.year || '?') + ')',
                                 value: String(r.id)
@@ -1392,13 +1305,13 @@
                         Lampa.Select.show({
                             title: 'Папки: Выберите фильм',
                             items: selectItems,
-                            onSelect: function (chosen) {
+                            onSelect: function(chosen) {
                                 // Юзер выбрал — сетим как основной ID и показываем папки
                                 myBtn.data('rezka-id', chosen.value);
                                 updateBtnState(chosen.value);
                                 showFolderMenu(chosen.value);
                             },
-                            onBack: function () {
+                            onBack: function() {
                                 restoreFocus();
                             }
                         });
@@ -1411,6 +1324,6 @@
     }
 
     if (window.Lampa && Lampa.Listener) {
-        Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') init(); });
+        Lampa.Listener.follow('app', function(e) { if (e.type === 'ready') init(); });
     }
 })();

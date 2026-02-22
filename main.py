@@ -130,21 +130,8 @@ def get_details(url: str):
     return client.get_series_details(url)
 
 @app.get("/api/search")
-def search(q: str, original: Optional[str] = None):
-    results = client.search(q)
-    if original:
-        original_results = client.search(original)
-        
-        # Merge results prioritizing standard query, avoiding duplicates
-        seen_ids = {str(item["id"]) for item in results if item.get("id")}
-        
-        for item in original_results:
-            item_id = str(item.get("id"))
-            if item_id and item_id not in seen_ids:
-                results.append(item)
-                seen_ids.add(item_id)
-                
-    return results
+def search(q: str):
+    return client.search(q)
 
 @app.get("/api/franchise")
 def get_franchise(url: str):
