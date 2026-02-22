@@ -480,7 +480,15 @@
                 rezkaUrl = null;
             } else {
                 // Обычный поиск из карточки папки
-                if (titleEn) queries.push(titleEn);
+                if (titleEn) {
+                    queries.push(titleEn);
+                    // Иногда titleEn может содержать только английские буквы без цифр (очистка регуляркой),
+                    // добавим гибридный запрос, если есть английское название и цифры в русском
+                    var ruNumbers = titleRu.match(/\d+/g);
+                    if (ruNumbers && !/\d/.test(titleEn)) {
+                        queries.push(titleEn + ' ' + ruNumbers.join(' '));
+                    }
+                }
                 if (titleRu) queries.push(titleRu);
             }
 
@@ -525,12 +533,11 @@
                         });
                     }
 
-                    // Показываем выбор, только если fallback использовался и НЕТ совпадений по году
-                    if (yearFallbackUsed && !hasExactYearMatch) {
-                        console.log('[Rezka] ⚠️ Year fallback was used and no exact year matches, showing selection');
-                        comp.showSelection(allResults, mediaType, rezkaUrl);
-                        return;
-                    }
+                    // Показываем выбор, если fallback использовался или есть несколько результатов, 
+                    // и мы НЕ нашли 100% идеального автосовпадения (оно проверится ниже).
+                    // Мы убрали жесткий блок if (yearFallbackUsed && !hasExactYearMatch) с return,
+                    // чтобы дать алгоритму ниже шанс найти точное совпадение по названию, 
+                    // либо штатно показать comp.showSelection(allResults...) в конце функции.
 
                     // УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА
                     var selectedResult = null;
