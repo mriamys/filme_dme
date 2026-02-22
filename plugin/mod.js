@@ -4,7 +4,9 @@
     var MY_API_URL = '__API_URL__';
     var TMDB_API_KEY = '__TMDB_KEY__';
 
-    console.log('[Rezka] Plugin loading (Folders Edition + No Freeze + Styles)...');
+    console.log('[Rezka] ===== MOD.JS LOADED v2026-02-22-B =====');
+    console.log('[Rezka] API_URL:', MY_API_URL);
+    console.log('[Rezka] TMDB_KEY set:', TMDB_API_KEY ? 'YES (' + TMDB_API_KEY.substring(0, 4) + '...)' : '!!! EMPTY !!!');
 
     // --- СТИЛИ ДЛЯ КНОПКИ (ЧТОБЫ НЕ СЛИВАЛАСЬ) ---
     var style = document.createElement('style');
@@ -653,17 +655,22 @@
                 }
             }
 
+            console.log('[Rezka Debug] === Starting TMDB queries ===', queries, 'year:', year, 'mediaType:', mediaType);
+
             // Выполняем поиск по всем запросам
-            queries.forEach(function (q) {
+            queries.forEach(function (q, idx) {
                 var url = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
                 if (year && mediaType !== 'multi') {
                     url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
                 }
 
+                console.log('[Rezka Debug] Query ' + idx + ': "' + q + '" → ' + url);
+
                 $.ajax({
                     url: url,
                     timeout: 10000,
                     success: function (data) {
+                        console.log('[Rezka Debug] Response for "' + q + '":', data.results ? data.results.length + ' results' : 'NO results field', data);
                         if (data.results && data.results.length > 0) {
                             data.results.forEach(function (item) {
                                 if (!seenIds[item.id]) {
@@ -677,12 +684,13 @@
                         } else if (year && mediaType !== 'multi') {
                             // Ничего не нашли с фильтром по году — повторяем без него
                             yearFallbackUsed = true;
-                            console.log('[Rezka] ⚠️ No results with year=' + year + ', retrying without year filter');
+                            console.log('[Rezka Debug] ⚠️ No results with year=' + year + ' for "' + q + '", retrying without year filter');
                             var urlNoYear = 'https://api.themoviedb.org/3/search/' + mediaType + '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(q);
                             $.ajax({
                                 url: urlNoYear,
                                 timeout: 10000,
                                 success: function (data2) {
+                                    console.log('[Rezka Debug] Fallback response for "' + q + '":', data2.results ? data2.results.length + ' results' : 'NO results field');
                                     if (data2.results) {
                                         data2.results.forEach(function (item) {
                                             if (!seenIds[item.id]) {
@@ -695,7 +703,8 @@
                                     }
                                     checkComplete();
                                 },
-                                error: function () {
+                                error: function (xhr, status, err) {
+                                    console.log('[Rezka Debug] ❌ Fallback AJAX ERROR for "' + q + '":', status, err, 'HTTP:', xhr.status);
                                     checkComplete();
                                 }
                             });
@@ -703,7 +712,8 @@
                             checkComplete();
                         }
                     },
-                    error: function () {
+                    error: function (xhr, status, err) {
+                        console.log('[Rezka Debug] ❌ AJAX ERROR for "' + q + '":', status, err, 'HTTP:', xhr.status);
                         checkComplete();
                     }
                 });
