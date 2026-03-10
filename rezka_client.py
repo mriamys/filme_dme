@@ -552,12 +552,29 @@ class RezkaClient:
                     if page > 1:
                         url_page = f"{url_page}page/{page}/"
                     url_page = f"{url_page}?{filter_param}"
-                    r = self.session.get(url_page)
+                    
+                    # Отправляем GET запрос
+                    r = self.session.get(url_page, timeout=10)
                     soup = BeautifulSoup(r.text, "html.parser")
                     items_page: List[Dict[str, Any]] = []
+                    
                     if soup.find("input", {"name": "login_name"}) or "Авторизация" in r.text:
-                         break 
-                    for item in soup.find_all(class_="b-content__inline_item"):
+                        print(f"⚠️ {self.origin} сбросил авторизацию (вернул форму входа).")
+                        break 
+                        
+                    items_found = soup.find_all(class_="b-content__inline_item")
+                    
+                    if not items_found:
+                        if "Ошибка доступа (105)" in r.text or "Cloudflare" in r.text:
+                            print(f"⚠️ {self.origin} отдал данные, но это капча/заглушка: {r.text[70:150]}...")
+                            # Выкидываем битое зеркало из списка, чтобы следующий auth() его не брал
+                            if self.origin in self.mirrors:
+                                self.mirrors.remove(self.origin)
+                        else:
+                            print(f"⚠️ На {self.origin} список пуст (или не спарсился).")
+                        break
+                        
+                    for item in items_found:
                         try:
                             item_id = item.get("data-id")
                             if not item_id or item_id in seen_ids:
