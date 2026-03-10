@@ -162,33 +162,27 @@ async def fetch_category_with_retry(cat_id: str, sort: str, label: str) -> list:
     return []
 
 @app.get("/api/watching")
-async def get_watching(request: Request, sort: str = "added"):
-    if not get_user_from_request(request): return AUTH_DENIED
+async def get_watching(sort: str = "added"):
     return await fetch_category_with_retry(CAT_WATCHING, sort, "📋 Смотрю")
 
 @app.get("/api/later")
-async def get_later(request: Request, sort: str = "added"):
-    if not get_user_from_request(request): return AUTH_DENIED
+async def get_later(sort: str = "added"):
     return await fetch_category_with_retry(CAT_LATER, sort, "⏳ Позже")
 
 @app.get("/api/watched")
-async def get_watched(request: Request, sort: str = "added"):
-    if not get_user_from_request(request): return AUTH_DENIED
+async def get_watched(sort: str = "added"):
     return await fetch_category_with_retry(CAT_WATCHED, sort, "✅ Архив")
 
 @app.get("/api/details")
-def get_details(request: Request, url: str):
-    if not get_user_from_request(request): return AUTH_DENIED
+def get_details(url: str):
     return client.get_series_details(url)
 
 @app.get("/api/search")
-def search(request: Request, q: str):
-    if not get_user_from_request(request): return AUTH_DENIED
+def search(q: str):
     return client.search(q)
 
 @app.get("/api/franchise")
-def get_franchise(request: Request, url: str):
-    if not get_user_from_request(request): return AUTH_DENIED
+def get_franchise(url: str):
     return client.get_franchise_items(url)
 
 class EpisodeUpdateRequest(BaseModel):
@@ -197,8 +191,7 @@ class EpisodeUpdateRequest(BaseModel):
     episode: str
 
 @app.post("/api/episode/mark")
-def mark_episode_watched(req: EpisodeUpdateRequest, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def mark_episode_watched(req: EpisodeUpdateRequest):
     """Отмечает конкретную серию как просмотренную"""
     try:
         # Получаем детали сериала
@@ -233,8 +226,7 @@ def mark_episode_watched(req: EpisodeUpdateRequest, request: Request):
         return {"success": False, "error": str(e)}
 
 @app.post("/api/episode/mark-range")
-def mark_episodes_range(req: dict, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def mark_episodes_range(req: dict):
     """Отмечает диапазон серий как просмотренные"""
     try:
         url = req.get("url")
@@ -269,8 +261,7 @@ def mark_episodes_range(req: dict, request: Request):
 
 # --- ПРОКСИ ДЛЯ КАРТИНОК (ОБЯЗАТЕЛЬНО) ---
 @app.get("/api/img")
-def proxy_img(request: Request, url: str):
-    if not get_user_from_request(request): return AUTH_DENIED
+def proxy_img(url: str):
     if not url: 
         print("[IMG] ❌ Нет URL")
         return Response(status_code=404)
@@ -292,8 +283,7 @@ def proxy_img(request: Request, url: str):
 # -----------------------------------------
 
 @app.post("/api/add")
-def add_item(req: AddRequest, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def add_item(req: AddRequest):
     cat_id = CAT_WATCHING
     if req.category == "later": cat_id = CAT_LATER
     elif req.category == "watched": cat_id = CAT_WATCHED
@@ -301,8 +291,7 @@ def add_item(req: AddRequest, request: Request):
     return {"success": success}
 
 @app.post("/api/delete")
-def delete_item(req: DeleteRequest, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def delete_item(req: DeleteRequest):
     cat_id = CAT_WATCHING
     if req.category == "later": cat_id = CAT_LATER
     elif req.category == "watched": cat_id = CAT_WATCHED
@@ -310,8 +299,7 @@ def delete_item(req: DeleteRequest, request: Request):
     return {"success": success}
 
 @app.post("/api/toggle")
-def toggle_status(req: WatchRequest, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def toggle_status(req: WatchRequest):
     success = client.toggle_watch(req.global_id, req.referer)
     return {"success": success}
 
@@ -321,8 +309,7 @@ class MoveRequest(BaseModel):
     to_category: str
 
 @app.post("/api/move")
-def move_item(req: MoveRequest, request: Request):
-    if not get_user_from_request(request): return AUTH_DENIED
+def move_item(req: MoveRequest):
     # Сначала добавляем в новую категорию
     to_cat_id = CAT_WATCHING
     if req.to_category == "later": to_cat_id = CAT_LATER
@@ -398,8 +385,7 @@ def serve_webapp():
     return response
 
 @app.get("/api/check_status")
-def check_status(request: Request, post_id: str):
-    if not get_user_from_request(request): return AUTH_DENIED
+def check_status(post_id: str):
     # Это упрощенная логика. В идеале клиент Rezka должен уметь быстро проверять ID.
     # Но так как у тебя пагинация и нет базы данных, это может быть медленно.
     # Поэтому пока можно просто возвращать "unknown" или реализовать кэш на сервере.

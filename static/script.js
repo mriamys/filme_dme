@@ -1,19 +1,6 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-// 🔐 АВТОРИЗАЦІЯ
-let initDataStr = tg.initData || "";
-
-function authFetch(url, options = {}) {
-    if (!options.headers) options.headers = {};
-    if (typeof options.headers.set === 'function') {
-        options.headers.set('X-Telegram-Init-Data', initDataStr);
-    } else {
-        options.headers['X-Telegram-Init-Data'] = initDataStr;
-    }
-    return fetch(url, options);
-}
-
 // Текущая выбранная категория
 let currentCategory = 'watching';
 // Кэш (хранит данные, пришедшие с сервера)
@@ -34,9 +21,9 @@ async function updateLibraryState() {
     try {
         // Загружаем списки параллельно
         const [w, l, a] = await Promise.all([
-            authFetch('/api/watching?sort=added').then(r => r.json()),
-            authFetch('/api/later?sort=added').then(r => r.json()),
-            authFetch('/api/watched?sort=added').then(r => r.json())
+            fetch('/api/watching?sort=added').then(r => r.json()),
+            fetch('/api/later?sort=added').then(r => r.json()),
+            fetch('/api/watched?sort=added').then(r => r.json())
         ]);
 
         // Превращаем в Set строк для быстрого поиска
@@ -134,7 +121,7 @@ async function loadGrid(cat) {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const res = await authFetch(`/api/${cat}?sort=${currentSort}`);
+            const res = await fetch(`/api/${cat}?sort=${currentSort}`);
             const data = await res.json();
 
             if (data && data.length > 0) {
@@ -190,7 +177,7 @@ async function openDetails(url, title, poster) {
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка серий...</div>';
 
     try {
-        const res = await authFetch(`/api/details?url=${encodeURIComponent(url)}`);
+        const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
         const data = await res.json();
 
         if (data.post_id) {
@@ -305,7 +292,7 @@ async function moveMovie(category) {
         return;
     }
     tg.HapticFeedback.notificationOccurred('success');
-    await authFetch('/api/add', {
+    await fetch('/api/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post_id: currentPostId, category: category })
@@ -322,7 +309,7 @@ async function deleteMovie() {
         return;
     }
     tg.HapticFeedback.notificationOccurred('success');
-    await authFetch('/api/delete', {
+    await fetch('/api/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post_id: currentPostId, category: currentCategory })
@@ -344,7 +331,7 @@ async function toggle(gid, btn) {
         btn.classList.add('active');
         row.classList.add('watched');
     }
-    await authFetch('/api/toggle', {
+    await fetch('/api/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ global_id: gid, referer: currentDetailsUrl })
@@ -375,7 +362,7 @@ function doSearch(val) {
     }
     searchTimer = setTimeout(async () => {
         if (val.length < 3) return;
-        const res = await authFetch(`/api/search?q=${encodeURIComponent(val)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(val)}`);
         const data = await res.json();
         const list = document.getElementById('search-results');
         list.innerHTML = '';
@@ -429,7 +416,7 @@ async function addFav(id, cat, btn) {
 
     tg.HapticFeedback.notificationOccurred('success');
     try {
-        const res = await authFetch('/api/add', {
+        const res = await fetch('/api/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ post_id: postId, category: cat })
@@ -469,16 +456,9 @@ async function addFav(id, cat, btn) {
 }
 
 // Инициализация
-if (!initDataStr) {
+if (!tg.initData) {
     document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;"><div><div style="font-size:80px;margin-bottom:20px;">🔒</div><h1 style="font-size:22px;margin-bottom:12px;">Доступ запрещён</h1><p style="color:#8E8E93;font-size:15px;line-height:1.5;">Эта страница доступна только через Telegram бот.<br>Откройте бот и нажмите кнопку меню.</p></div></div>';
 } else {
-    // Перевіряємо доступ
-    authFetch('/api/watching?sort=added').then(res => {
-        if (res.status === 403) {
-            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;"><div><div style="font-size:80px;margin-bottom:20px;">⛔</div><h1 style="font-size:22px;margin-bottom:12px;">Доступ запрещён</h1><p style="color:#8E8E93;font-size:15px;line-height:1.5;">У вас нет доступа к этому приложению.<br>Обратитесь к администратору.</p></div></div>';
-            return;
-        }
-        loadGrid('watching');
-        updateLibraryState();
-    });
+    loadGrid('watching');
+    updateLibraryState();
 }

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,6 +8,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="static/style.css">
 </head>
+
 <body>
 
     <div id="search-ui" class="search-box" style="display: none;">
@@ -26,7 +28,10 @@
 
     <div id="details">
         <button class="back-btn" onclick="closeDetails()">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
         </button>
 
         <div class="hero">
@@ -37,7 +42,9 @@
         </div>
 
         <div id="det-controls" class="manage-box" style="display:none;">
-            <a id="det-site-link" href="#" target="_blank" class="btn-action" style="background: #444; text-decoration: none; display: flex; align-items: center; justify-content: center;">🌐 На сайте</a>
+            <a id="det-site-link" href="#" target="_blank" class="btn-action"
+                style="background: #444; text-decoration: none; display: flex; align-items: center; justify-content: center;">🌐
+                На сайте</a>
             <button class="btn-action btn-watch" onclick="moveMovie('watching')">В Смотрю</button>
             <button class="btn-action btn-later" onclick="moveMovie('later')">В Позже</button>
             <button class="btn-action btn-done" onclick="moveMovie('watched')">В Архив</button>
@@ -52,30 +59,42 @@
     <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('watching', this)">
             <span class="tab-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
             </span>
             <span>Смотрю <span id="cnt-watching" class="count-badge"></span></span>
         </button>
         <button class="tab-btn" onclick="switchTab('later', this)">
             <span class="tab-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
             </span>
             <span>Позже <span id="cnt-later" class="count-badge"></span></span>
         </button>
         <button class="tab-btn" onclick="switchTab('watched', this)">
             <span class="tab-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
             </span>
             <span>Архив <span id="cnt-watched" class="count-badge"></span></span>
         </button>
         <button class="tab-btn" onclick="openSearch(this)">
             <span class="tab-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
             </span>
             Поиск
         </button>
     </div>
 
-    <script src="static/script.js"></script>
+    <script src="static/script.js?v=3"></script>
 </body>
+
 </html>
