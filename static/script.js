@@ -1,6 +1,19 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
+// 🔐 АВТОРИЗАЦІЯ
+let initDataStr = tg.initData || "";
+
+function authFetch(url, options = {}) {
+    if (!options.headers) options.headers = {};
+    if (typeof options.headers.set === 'function') {
+        options.headers.set('X-Telegram-Init-Data', initDataStr);
+    } else {
+        options.headers['X-Telegram-Init-Data'] = initDataStr;
+    }
+    return fetch(url, options);
+}
+
 // Текущая выбранная категория
 let currentCategory = 'watching';
 // Кэш (хранит данные, пришедшие с сервера)
@@ -21,9 +34,9 @@ async function updateLibraryState() {
     try {
         // Загружаем списки параллельно
         const [w, l, a] = await Promise.all([
-            fetch('/api/watching?sort=added').then(r => r.json()),
-            fetch('/api/later?sort=added').then(r => r.json()),
-            fetch('/api/watched?sort=added').then(r => r.json())
+            authFetch('/api/watching?sort=added').then(r => r.json()),
+            authFetch('/api/later?sort=added').then(r => r.json()),
+            authFetch('/api/watched?sort=added').then(r => r.json())
         ]);
 
         // Превращаем в Set строк для быстрого поиска
@@ -60,17 +73,17 @@ function changeSort(val) {
 // Переключение вкладок
 async function switchTab(cat, btn) {
     currentCategory = cat;
-    
+
     // Скрываем поиск, показываем сетку
     document.getElementById('search-ui').style.display = 'none';
     document.getElementById('grid').style.display = 'grid';
-    
+
     const toolbar = document.getElementById('toolbar');
     if (toolbar) toolbar.style.display = 'flex';
-    
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
-    
+
     loadGrid(cat);
 }
 
@@ -78,24 +91,24 @@ async function switchTab(cat, btn) {
 function renderSortedGrid() {
     const grid = document.getElementById('grid');
     grid.innerHTML = '';
-    
+
     const sorted = allLoadedItems;
-    
+
     if (!sorted || sorted.length === 0) {
         grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Список пуст</div>';
         return;
     }
-    
+
     sorted.forEach(item => {
         const div = document.createElement('div');
         div.className = 'card';
         div.onclick = () => openDetails(item.url, item.title, item.poster);
-        
+
         const cleanTitle = item.title.replace(/\s*\(\d{4}\)/, '');
-        
+
         let yearHtml = '';
         if (currentSort === 'year' && item.year) {
-             yearHtml = `<div class="card-year">${item.year}</div>`;
+            yearHtml = `<div class="card-year">${item.year}</div>`;
         }
 
         div.innerHTML = `
@@ -115,21 +128,21 @@ function renderSortedGrid() {
 async function loadGrid(cat) {
     const grid = document.getElementById('grid');
     grid.innerHTML = '<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка...</div>';
-    
+
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 2000;
-    
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const res = await fetch(`/api/${cat}?sort=${currentSort}`);
+            const res = await authFetch(`/api/${cat}?sort=${currentSort}`);
             const data = await res.json();
-            
+
             if (data && data.length > 0) {
                 allLoadedItems = data;
                 renderSortedGrid();
                 return;
             }
-            
+
             // Пустой ответ — повторяем
             if (attempt < MAX_RETRIES) {
                 grid.innerHTML = `<div style="grid-column:span 2; text-align:center; padding:30px; color:#666">Загрузка... (попытка ${attempt + 1})</div>`;
@@ -159,31 +172,31 @@ async function openDetails(url, title, poster) {
     document.getElementById('det-img').src = poster;
     document.getElementById('det-title').innerText = title;
     document.getElementById('det-controls').style.display = 'none';
-    
+
     const statusBadge = document.getElementById('det-status-badge');
     statusBadge.style.display = 'none';
     statusBadge.innerText = '';
-    
+
     const siteLink = document.getElementById('det-site-link');
     if (siteLink) {
         siteLink.href = url;
     }
-    
+
     const franchiseContainer = document.getElementById('det-franchises');
     if (franchiseContainer) franchiseContainer.innerHTML = '';
 
     currentDetailsUrl = url;
     const list = document.getElementById('det-list');
     list.innerHTML = '<div style="text-align:center; padding:40px; color:#888">Загрузка серий...</div>';
-    
+
     try {
-        const res = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
+        const res = await authFetch(`/api/details?url=${encodeURIComponent(url)}`);
         const data = await res.json();
-        
+
         if (data.post_id) {
             currentPostId = data.post_id;
             document.getElementById('det-controls').style.display = 'flex';
-            
+
             // --- ПРОВЕРКА СТАТУСА ---
             const pid = String(currentPostId);
             if (libraryState.watching.has(pid)) {
@@ -201,7 +214,7 @@ async function openDetails(url, title, poster) {
             }
         }
         if (data.poster) document.getElementById('det-img').src = data.poster;
-        
+
         list.innerHTML = '';
         if (data.error) {
             list.innerHTML = `<div style="text-align:center; padding:20px;">${data.error}</div>`;
@@ -243,15 +256,15 @@ async function openDetails(url, title, poster) {
                 data.seasons[s].forEach(ep => {
                     const row = document.createElement('div');
                     row.className = `ep-row ${ep.watched ? 'watched' : ''}`;
-                    
+
                     // --- ДАТА СЕРИИ ---
                     const dateHtml = ep.date ? `<div class="ep-date">${ep.date}</div>` : '';
-                    
+
                     // --- НАЗВАНИЯ СЕРИИ ---
                     let episodeTitlesHtml = '';
                     if (ep.episode_title_ru || ep.episode_title_en) {
                         episodeTitlesHtml = '<div class="ep-titles">';
-                        
+
                         // Якщо є російська назва - показуємо тільки її
                         if (ep.episode_title_ru) {
                             episodeTitlesHtml += `<div class="ep-title-ru">${ep.episode_title_ru}</div>`;
@@ -260,10 +273,10 @@ async function openDetails(url, title, poster) {
                         else if (ep.episode_title_en) {
                             episodeTitlesHtml += `<div class="ep-title-en">${ep.episode_title_en}</div>`;
                         }
-                        
+
                         episodeTitlesHtml += '</div>';
                     }
-                    
+
                     row.innerHTML = `
                         <div class="ep-info">
                             <span>${ep.title}</span>
@@ -292,7 +305,7 @@ async function moveMovie(category) {
         return;
     }
     tg.HapticFeedback.notificationOccurred('success');
-    await fetch('/api/add', {
+    await authFetch('/api/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post_id: currentPostId, category: category })
@@ -309,7 +322,7 @@ async function deleteMovie() {
         return;
     }
     tg.HapticFeedback.notificationOccurred('success');
-    await fetch('/api/delete', {
+    await authFetch('/api/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post_id: currentPostId, category: currentCategory })
@@ -331,7 +344,7 @@ async function toggle(gid, btn) {
         btn.classList.add('active');
         row.classList.add('watched');
     }
-    await fetch('/api/toggle', {
+    await authFetch('/api/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ global_id: gid, referer: currentDetailsUrl })
@@ -342,14 +355,14 @@ function openSearch(btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('grid').style.display = 'none';
-    
+
     const toolbar = document.getElementById('toolbar');
     if (toolbar) toolbar.style.display = 'none';
 
     document.getElementById('search-ui').style.display = 'block';
     const input = document.getElementById('q');
     input.focus();
-    input.value = ''; 
+    input.value = '';
     document.getElementById('search-results').innerHTML = '';
 }
 
@@ -362,20 +375,20 @@ function doSearch(val) {
     }
     searchTimer = setTimeout(async () => {
         if (val.length < 3) return;
-        const res = await fetch(`/api/search?q=${encodeURIComponent(val)}`);
+        const res = await authFetch(`/api/search?q=${encodeURIComponent(val)}`);
         const data = await res.json();
         const list = document.getElementById('search-results');
         list.innerHTML = '';
-        
+
         data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'search-item';
             div.id = `search-item-${item.id}`; // Добавляем ID для обновления
-            
+
             // --- ПРОВЕРКА СТАТУСА ---
             const itemIdStr = String(item.id);
             let statusBadge = '';
-            
+
             if (libraryState.watching.has(itemIdStr)) {
                 statusBadge = '<span class="search-status-exists" style="background:#007aff">В Смотрю</span>';
             } else if (libraryState.later.has(itemIdStr)) {
@@ -385,7 +398,7 @@ function doSearch(val) {
             }
 
             let titleHTML = item.title || 'Без названия';
-            
+
             div.innerHTML = `
                 <div class="search-header">
                     <div class="search-title">${titleHTML}</div>
@@ -413,21 +426,21 @@ async function addFav(id, cat, btn) {
     // Визуальный отклик на кнопке
     const originalText = btn.innerText;
     btn.innerText = '...';
-    
+
     tg.HapticFeedback.notificationOccurred('success');
     try {
-        const res = await fetch('/api/add', {
+        const res = await authFetch('/api/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ post_id: postId, category: cat })
         });
         const data = await res.json();
-        
+
         if (data.success) {
             btn.innerText = 'OK!';
             // Обновляем библиотеку и перерисовываем бейдж в поиске
             await updateLibraryState();
-            
+
             // Находим элемент в списке и обновляем бейдж
             const itemDiv = document.getElementById(`search-item-${id}`);
             if (itemDiv) {
@@ -435,15 +448,15 @@ async function addFav(id, cat, btn) {
                 // Удаляем старый бейдж если есть
                 const oldBadge = header.querySelector('.search-status-exists');
                 if (oldBadge) oldBadge.remove();
-                
+
                 let badgeColor = '#007aff';
                 let badgeText = 'В Смотрю';
                 if (cat === 'later') { badgeColor = '#ff9500'; badgeText = 'В Позже'; }
                 if (cat === 'watched') { badgeColor = '#34c759'; badgeText = 'В Архиве'; }
-                
+
                 header.innerHTML += `<span class="search-status-exists" style="background:${badgeColor}">${badgeText}</span>`;
             }
-            
+
             setTimeout(() => { btn.innerText = originalText; }, 1000);
         } else {
             alert('Ошибка добавления');
@@ -456,5 +469,16 @@ async function addFav(id, cat, btn) {
 }
 
 // Инициализация
-loadGrid('watching');
-updateLibraryState();
+if (!initDataStr) {
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;"><div><div style="font-size:80px;margin-bottom:20px;">🔒</div><h1 style="font-size:22px;margin-bottom:12px;">Доступ запрещён</h1><p style="color:#8E8E93;font-size:15px;line-height:1.5;">Эта страница доступна только через Telegram бот.<br>Откройте бот и нажмите кнопку меню.</p></div></div>';
+} else {
+    // Перевіряємо доступ
+    authFetch('/api/watching?sort=added').then(res => {
+        if (res.status === 403) {
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;"><div><div style="font-size:80px;margin-bottom:20px;">⛔</div><h1 style="font-size:22px;margin-bottom:12px;">Доступ запрещён</h1><p style="color:#8E8E93;font-size:15px;line-height:1.5;">У вас нет доступа к этому приложению.<br>Обратитесь к администратору.</p></div></div>';
+            return;
+        }
+        loadGrid('watching');
+        updateLibraryState();
+    });
+}

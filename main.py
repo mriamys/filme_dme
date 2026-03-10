@@ -2,11 +2,15 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
+import hmac
+import hashlib
+import json
+from urllib.parse import parse_qs
 
 # Импортируем Response для картинок
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -16,6 +20,50 @@ from bot import client, bot, dp, check_updates_task, check_collections_task, log
 import time
 
 load_dotenv()
+
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+
+# === 🔐 TELEGRAM INIT DATA ВАЛІДАЦІЯ ===
+def validate_telegram_init_data(init_data_raw: str, bot_token: str) -> dict | None:
+    try:
+        parsed = dict(parse_qs(init_data_raw, keep_blank_values=True))
+        parsed = {k: v[0] for k, v in parsed.items()}
+        if "hash" not in parsed:
+            return None
+        received_hash = parsed.pop("hash")
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        if calculated_hash != received_hash:
+            return None
+        if "user" in parsed:
+            parsed["user"] = json.loads(parsed["user"])
+        return parsed
+    except Exception as e:
+        print(f"⚠️ initData validation error: {e}")
+        return None
+
+
+def get_user_from_request(request: Request) -> int | None:
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if not init_data:
+        return None
+    data = validate_telegram_init_data(init_data, BOT_TOKEN)
+    if not data or "user" not in data:
+        return None
+    user_id = data["user"].get("id")
+    if not user_id:
+        return None
+    # Перевіряємо що user_id = CHAT_ID (дозволений користувач)
+    if str(user_id) != str(CHAT_ID):
+        print(f"🔐 AUTH: user {user_id} != CHAT_ID {CHAT_ID}")
+        return None
+    return user_id
+
+
+AUTH_DENIED = JSONResponse(status_code=403, content={"message": "Unauthorized"})
 
 # --- ИЗМЕНЕНО: Увеличил лимит страниц с 5 до 30 (хватит на ~1000+ фильмов) ---
 CAT_WATCHING = os.getenv("REZKA_CAT_WATCHING")
@@ -114,27 +162,33 @@ async def fetch_category_with_retry(cat_id: str, sort: str, label: str) -> list:
     return []
 
 @app.get("/api/watching")
-async def get_watching(sort: str = "added"):
+async def get_watching(request: Request, sort: str = "added"):
+    if not get_user_from_request(request): return AUTH_DENIED
     return await fetch_category_with_retry(CAT_WATCHING, sort, "📋 Смотрю")
 
 @app.get("/api/later")
-async def get_later(sort: str = "added"):
+async def get_later(request: Request, sort: str = "added"):
+    if not get_user_from_request(request): return AUTH_DENIED
     return await fetch_category_with_retry(CAT_LATER, sort, "⏳ Позже")
 
 @app.get("/api/watched")
-async def get_watched(sort: str = "added"):
+async def get_watched(request: Request, sort: str = "added"):
+    if not get_user_from_request(request): return AUTH_DENIED
     return await fetch_category_with_retry(CAT_WATCHED, sort, "✅ Архив")
 
 @app.get("/api/details")
-def get_details(url: str):
+def get_details(request: Request, url: str):
+    if not get_user_from_request(request): return AUTH_DENIED
     return client.get_series_details(url)
 
 @app.get("/api/search")
-def search(q: str):
+def search(request: Request, q: str):
+    if not get_user_from_request(request): return AUTH_DENIED
     return client.search(q)
 
 @app.get("/api/franchise")
-def get_franchise(url: str):
+def get_franchise(request: Request, url: str):
+    if not get_user_from_request(request): return AUTH_DENIED
     return client.get_franchise_items(url)
 
 class EpisodeUpdateRequest(BaseModel):
@@ -143,7 +197,8 @@ class EpisodeUpdateRequest(BaseModel):
     episode: str
 
 @app.post("/api/episode/mark")
-def mark_episode_watched(req: EpisodeUpdateRequest):
+def mark_episode_watched(req: EpisodeUpdateRequest, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     """Отмечает конкретную серию как просмотренную"""
     try:
         # Получаем детали сериала
@@ -178,7 +233,8 @@ def mark_episode_watched(req: EpisodeUpdateRequest):
         return {"success": False, "error": str(e)}
 
 @app.post("/api/episode/mark-range")
-def mark_episodes_range(req: dict):
+def mark_episodes_range(req: dict, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     """Отмечает диапазон серий как просмотренные"""
     try:
         url = req.get("url")
@@ -213,7 +269,8 @@ def mark_episodes_range(req: dict):
 
 # --- ПРОКСИ ДЛЯ КАРТИНОК (ОБЯЗАТЕЛЬНО) ---
 @app.get("/api/img")
-def proxy_img(url: str):
+def proxy_img(request: Request, url: str):
+    if not get_user_from_request(request): return AUTH_DENIED
     if not url: 
         print("[IMG] ❌ Нет URL")
         return Response(status_code=404)
@@ -235,7 +292,8 @@ def proxy_img(url: str):
 # -----------------------------------------
 
 @app.post("/api/add")
-def add_item(req: AddRequest):
+def add_item(req: AddRequest, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     cat_id = CAT_WATCHING
     if req.category == "later": cat_id = CAT_LATER
     elif req.category == "watched": cat_id = CAT_WATCHED
@@ -243,7 +301,8 @@ def add_item(req: AddRequest):
     return {"success": success}
 
 @app.post("/api/delete")
-def delete_item(req: DeleteRequest):
+def delete_item(req: DeleteRequest, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     cat_id = CAT_WATCHING
     if req.category == "later": cat_id = CAT_LATER
     elif req.category == "watched": cat_id = CAT_WATCHED
@@ -251,7 +310,8 @@ def delete_item(req: DeleteRequest):
     return {"success": success}
 
 @app.post("/api/toggle")
-def toggle_status(req: WatchRequest):
+def toggle_status(req: WatchRequest, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     success = client.toggle_watch(req.global_id, req.referer)
     return {"success": success}
 
@@ -261,7 +321,8 @@ class MoveRequest(BaseModel):
     to_category: str
 
 @app.post("/api/move")
-def move_item(req: MoveRequest):
+def move_item(req: MoveRequest, request: Request):
+    if not get_user_from_request(request): return AUTH_DENIED
     # Сначала добавляем в новую категорию
     to_cat_id = CAT_WATCHING
     if req.to_category == "later": to_cat_id = CAT_LATER
@@ -337,7 +398,8 @@ def serve_webapp():
     return response
 
 @app.get("/api/check_status")
-def check_status(post_id: str):
+def check_status(request: Request, post_id: str):
+    if not get_user_from_request(request): return AUTH_DENIED
     # Это упрощенная логика. В идеале клиент Rezka должен уметь быстро проверять ID.
     # Но так как у тебя пагинация и нет базы данных, это может быть медленно.
     # Поэтому пока можно просто возвращать "unknown" или реализовать кэш на сервере.
