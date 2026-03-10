@@ -33,31 +33,66 @@ class RezkaClient:
         self.login = os.getenv("REZKA_LOGIN")
         self.password = os.getenv("REZKA_PASS")
         self.is_logged_in = False
-        self.origin: str = base_url or os.getenv("REZKA_DOMAIN", "https://hdrezka.me")
+        
+        # Список зеркал от пользователя + домен из .env если есть
+        env_domain = os.getenv("REZKA_DOMAIN")
+        default_mirrors = [
+            "https://rezka-ua.pub",
+            "https://rezka-ua.in",
+            "https://rezka-ua.tv",
+            "https://rezka.ag",
+            "https://hdrezka.ag",
+            "https://hdrezka.me",
+            "https://rezka.fi"
+        ]
+        
+        self.mirrors = []
+        if base_url: self.mirrors.append(base_url)
+        elif env_domain: self.mirrors.append(env_domain)
+        
+        for m in default_mirrors:
+            if m not in self.mirrors:
+                self.mirrors.append(m)
+                
+        # Текущий рабочий домен (назначается при успешной авторизации)
+        self.origin: str = self.mirrors[0]
 
     def auth(self) -> bool:
         if self.is_logged_in:
             return True
-        try:
-            print("🔑 Попытка авторизации...")
-            headers = {"X-Requested-With": "XMLHttpRequest"}
-            r = self.session.post(
-                f"{self.origin}/ajax/login/",
-                data={"login_name": self.login, "login_password": self.password},
-                headers=headers,
-            )
+            
+        print("🔍 Поиск рабочего зеркала HDRezka...")
+        headers = {"X-Requested-With": "XMLHttpRequest"}
+        
+        for mirror in self.mirrors:
             try:
-                res = r.json()
-                if res.get("success"):
-                    self.is_logged_in = True
-                    print("✅ Авторизация успешна")
-                    return True
-                else:
-                    print(f"❌ Ошибка авторизации (API): {res}")
-            except:
-                print(f"❌ Ошибка авторизации (Не JSON): {r.text[:100]}")
-        except Exception as e:
-            print(f"❌ Ошибка подключения при авторизации: {e}")
+                print(f"🔑 Попытка авторизации через: {mirror} ...")
+                r = self.session.post(
+                    f"{mirror}/ajax/login/",
+                    data={"login_name": self.login, "login_password": self.password},
+                    headers=headers,
+                    timeout=5  # Быстрый таймаут чтобы не висеть на дохлом зеркале
+                )
+                
+                # Если нас пустило и вернуло JSON - всё отлично
+                try:
+                    res = r.json()
+                    if res.get("success"):
+                        self.is_logged_in = True
+                        self.origin = mirror  # Запоминаем рабочее зеркало
+                        print(f"✅ Авторизация успешна! Рабочее зеркало: {self.origin}")
+                        return True
+                    else:
+                        print(f"❌ Ошибка авторизации (неверный пароль?): {res}")
+                        # Если неверный пароль, другие зеркала пробовать нет смысла
+                        return False 
+                except:
+                    # Вернуло не JSON (например, Ошибка доступа 105)
+                    print(f"⚠️ Зеркало заблокировано или капча (ответ не JSON): {r.text[:50]}...")
+            except Exception as e:
+                print(f"⚠️ Ошибка подключения к {mirror}: {e}")
+        
+        print("❌ Все зеркала недоступны или заблокированы.")
         return False
 
     def _is_watched_check(self, element: Any) -> bool:
